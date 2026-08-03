@@ -14,11 +14,12 @@ export default function Dashboard() {
   const [paymentFilters, setPaymentFilters] = useState<string[]>([]);
   const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const [layoutMode, setLayoutMode] = useState<'grid' | 'list'>('grid');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const fetchCustomers = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/customers');
+      const res = await fetch('/api/customers', { cache: 'no-store' });
       const data = await res.json();
       if (Array.isArray(data)) {
         setCustomers(data);
@@ -40,6 +41,14 @@ export default function Dashboard() {
   const filteredAndSortedCustomers = useMemo(() => {
     let result = [...customers];
     
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase().trim();
+      result = result.filter(c => 
+        (c.name && c.name.toLowerCase().includes(q)) || 
+        (String(c.bcId || '').toLowerCase().includes(q))
+      );
+    }
+
     if (!showZeroBalance) {
       result = result.filter(c => c.balance !== 0);
     }
@@ -59,7 +68,7 @@ export default function Dashboard() {
     }
     
     return result;
-  }, [customers, showZeroBalance, sortMode, paymentFilters, statusFilters]);
+  }, [customers, showZeroBalance, sortMode, paymentFilters, statusFilters, searchQuery]);
 
   return (
     <div className="min-h-screen bg-slate-50 p-8 pb-32">
@@ -83,6 +92,15 @@ export default function Dashboard() {
         {/* Controls */}
         <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 backdrop-blur-sm mb-6 flex flex-wrap gap-4 items-center justify-between">
           <div className="flex flex-wrap gap-4 items-center">
+            {/* Search Input */}
+            <input
+              type="text"
+              placeholder="Buscar cliente por nombre o ID..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="bg-white text-sm text-gray-900 px-3 py-1.5 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-black min-w-[200px]"
+            />
+
             {/* Show zero balance toggle */}
             <button 
               onClick={() => setShowZeroBalance(!showZeroBalance)}

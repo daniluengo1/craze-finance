@@ -41,7 +41,7 @@ export default function RecobrosPage() {
   const fetchInvoices = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/invoices');
+      const res = await fetch('/api/invoices', { cache: 'no-store' });
       const data = await res.json();
       if (Array.isArray(data)) {
         setRawInvoices(data);

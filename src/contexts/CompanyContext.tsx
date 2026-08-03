@@ -26,12 +26,16 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
     const stored = localStorage.getItem('craze_selected_company');
     if (stored && COMPANIES.includes(stored)) {
       setSelectedCompanyState(stored);
+      document.cookie = `craze_selected_company=${encodeURIComponent(stored)}; path=/; max-age=31536000`;
+    } else {
+      document.cookie = `craze_selected_company=${encodeURIComponent(COMPANIES[0])}; path=/; max-age=31536000`;
     }
   }, []);
 
   const setSelectedCompany = (company: string) => {
     setSelectedCompanyState(company);
     localStorage.setItem('craze_selected_company', company);
+    document.cookie = `craze_selected_company=${encodeURIComponent(company)}; path=/; max-age=31536000`;
   };
 
   if (!isMounted) {

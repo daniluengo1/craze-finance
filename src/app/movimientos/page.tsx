@@ -15,7 +15,7 @@ export default function MovimientosPage() {
   const fetchEntries = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/ledger-entries');
+      const res = await fetch('/api/ledger-entries', { cache: 'no-store' });
       const data = await res.json();
       if (Array.isArray(data)) {
         setEntries(data);

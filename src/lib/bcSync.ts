@@ -145,8 +145,8 @@ export async function syncBusinessCentral() {
           name: c.displayName || c.name || c.number,
           email: c.email || null,
           paymentMethod: pmCode,
-          riskLimit: c.creditLimit || 0,
-          balance: c.balance || 0,
+          riskLimit: c.creditLimitLCY !== undefined ? c.creditLimitLCY : (c.creditLimit || 0),
+          balance: c.balance || c.balanceLCY || 0,
           salespersonCode: c.salespersonCode || c.salesPersonCode || null,
           salespersonName: c.salespersonName || c.salesPersonName || (c.salespersonCode ? salespeopleMap.get(c.salespersonCode) : null) || (c.salesPersonCode ? salespeopleMap.get(c.salesPersonCode) : null) || c.salespersonCode || c.salesPersonCode || null,
         };
@@ -159,7 +159,7 @@ export async function syncBusinessCentral() {
         } else {
           await prisma.customer.create({
             data: {
-              bcId: c.number,
+              bcId: customerNumber,
               companyId: exactCompanyName,
               ...custData
             }

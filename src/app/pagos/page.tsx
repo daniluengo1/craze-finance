@@ -25,7 +25,7 @@ export default function PagosPage() {
   const fetchInvoices = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/purchase-invoices');
+      const res = await fetch('/api/purchase-invoices', { cache: 'no-store' });
       const data = await res.json();
       if (Array.isArray(data)) {
         // Filter out closed invoices per user request

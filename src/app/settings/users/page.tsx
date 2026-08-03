@@ -33,7 +33,7 @@ export default function UsersPage() {
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('/api/users');
+      const res = await fetch('/api/users', { cache: 'no-store' });
       const data = await res.json();
       setUsers(data);
     } catch (e) {
@@ -46,10 +46,15 @@ export default function UsersPage() {
   const handleOpenModal = (user: any = null) => {
     if (user) {
       setEditingUserId(user.id);
+      let parsedPerms = [];
+      try {
+        parsedPerms = typeof user.permissions === 'string' ? JSON.parse(user.permissions || '[]') : (Array.isArray(user.permissions) ? user.permissions : []);
+      } catch(e) {}
+      
       setFormData({
         username: user.username,
         password: '', // Leave blank when editing unless they want to change it
-        permissions: JSON.parse(user.permissions || '[]'),
+        permissions: parsedPerms,
       });
     } else {
       setEditingUserId(null);
@@ -159,7 +164,11 @@ export default function UsersPage() {
                 </td>
               </tr>
             ) : users.map(user => {
-              const perms = JSON.parse(user.permissions || '[]');
+              let perms = [];
+              try {
+                perms = typeof user.permissions === 'string' ? JSON.parse(user.permissions || '[]') : (Array.isArray(user.permissions) ? user.permissions : []);
+              } catch(e) {}
+              
               return (
                 <tr key={user.id} className="hover:bg-gray-50/50 transition-colors">
                   <td className="p-4 text-gray-900 font-medium flex items-center gap-2">
