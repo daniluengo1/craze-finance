@@ -163,7 +163,7 @@ export default function UsersPage() {
               return (
                 <tr key={user.id} className="hover:bg-gray-50/50 transition-colors">
                   <td className="p-4 text-gray-900 font-medium flex items-center gap-2">
-                    {user.id === 1 && <Shield size={14} className="text-orange-400" title="Super Admin" />}
+                    {user.id === 1 && <span title="Super Admin"><Shield size={14} className="text-orange-400" /></span>}
                     {user.username}
                   </td>
                   <td className="p-4">
