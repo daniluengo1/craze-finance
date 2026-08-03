@@ -64,7 +64,7 @@ export async function syncBusinessCentral() {
     if (require('fs').existsSync(excelPath)) {
       const wb = xlsx.readFile(excelPath);
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const data = xlsx.utils.sheet_to_json<any>(ws);
+      const data = xlsx.utils.sheet_to_json(ws) as any[];
       for (const row of data) {
         if (row.Code !== undefined && row.Name !== undefined) {
           salespeopleMap.set(row.Code.toString(), row.Name.toString());
