@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import prisma from '@/lib/prisma';
 import { generateReportHtml } from '@/lib/reportBuilder';
+import puppeteer from 'puppeteer';
 
 export async function POST(request: Request) {
   try {
@@ -63,6 +64,12 @@ export async function POST(request: Request) {
 
     const formattedMessage = message.split('\n\n').map((p: string) => `<p style="margin-top: 0; margin-bottom: 16px;">${p.replace(/\n/g, '<br/>')}</p>`).join('');
 
+    const browser = await puppeteer.launch({ headless: true });
+    const page = await browser.newPage();
+    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+    const pdfBuffer = await page.pdf({ format: 'A4' });
+    await browser.close();
+
     const info = await transporter.sendMail({
       from: fromAddress,
       to,
@@ -70,14 +77,14 @@ export async function POST(request: Request) {
       text: message, // plain text
       html: `<div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; color: #333;">
               ${formattedMessage}
-              <br/><br/>
-              <div style="background-color: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; margin-top: 20px;">
-                <h3 style="margin-top: 0; color: #0f172a;">Detalle de Facturas:</h3>
-                ${htmlContent}
-              </div>
               ${signature}
              </div>`, 
       attachments: [
+        {
+          filename: 'Facturas_Vencidas.pdf',
+          content: pdfBuffer,
+          contentType: 'application/pdf'
+        },
         {
           filename: 'logo.png',
           path: 'https://craze-finance.vercel.app/logo.png',
