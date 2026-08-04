@@ -292,7 +292,7 @@ export default function RecobrosPage() {
               await new Promise(r => setTimeout(r, 500));
             }
             const pdfStr = await win.html2pdf().set({
-              margin: [10, 10, 10, 10],
+              margin: 10,
               filename: 'Facturas.pdf',
               image: { type: 'jpeg', quality: 0.98 },
               html2canvas: { scale: 2, useCORS: true, logging: false },
@@ -381,7 +381,7 @@ export default function RecobrosPage() {
               await new Promise(r => setTimeout(r, 500));
             }
             const pdfStr = await win.html2pdf().set({
-              margin: [10, 10, 10, 10],
+              margin: 10,
               filename: 'Facturas.pdf',
               image: { type: 'jpeg', quality: 0.98 },
               html2canvas: { scale: 2, useCORS: true, logging: false },
