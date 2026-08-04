@@ -24,6 +24,14 @@ async function getAccessToken(tenantId: string, clientId: string, clientSecret: 
   return data.access_token;
 }
 
+// Helper to update records in parallel chunks
+async function chunkedUpdate(updates: any[], updateFn: (update: any) => Promise<any>, chunkSize = 50) {
+  for (let i = 0; i < updates.length; i += chunkSize) {
+    const chunk = updates.slice(i, i + chunkSize);
+    await Promise.all(chunk.map(updateFn));
+  }
+}
+
 // Helper to fetch all pages of OData V4 response
 async function fetchODataAllPages(startUrl: string, accessToken: string): Promise<any[]> {
   let nextUrl: string | null = startUrl;
@@ -206,8 +214,8 @@ export async function syncBusinessCentral(specificCompany?: string) {
           skipDuplicates: true
         });
       }
-      for (const update of custUpdates) {
-        await prisma.customer.update(update);
+      if (custUpdates.length > 0) {
+        await chunkedUpdate(custUpdates, (u) => prisma.customer.update(u));
       }
 
       // 3. Fetch Customer Ledger Entries (Invoices/Recobros)
@@ -300,9 +308,9 @@ export async function syncBusinessCentral(specificCompany?: string) {
           });
         }
         
-        // Execute updates in a loop (fast enough usually, or we can transaction it)
-        for (const update of invoiceUpdates) {
-          await prisma.invoice.update(update);
+        // Execute updates in chunks
+        if (invoiceUpdates.length > 0) {
+          await chunkedUpdate(invoiceUpdates, (u) => prisma.invoice.update(u));
         }
 
         // Close invoices that are no longer active
@@ -396,8 +404,8 @@ export async function syncBusinessCentral(specificCompany?: string) {
               skipDuplicates: true
             });
           }
-          for (const update of fallbackUpdates) {
-            await prisma.invoice.update(update);
+          if (fallbackUpdates.length > 0) {
+            await chunkedUpdate(fallbackUpdates, (u) => prisma.invoice.update(u));
           }
 
           if (fallbackActiveIds.size > 0) {
@@ -468,8 +476,8 @@ export async function syncBusinessCentral(specificCompany?: string) {
           skipDuplicates: true
         });
       }
-      for (const update of venUpdates) {
-        await prisma.vendor.update(update);
+      if (venUpdates.length > 0) {
+        await chunkedUpdate(venUpdates, (u) => prisma.vendor.update(u));
       }
 
       // 5. Fetch Vendor Ledger Entries (Pagos a proveedores)
@@ -571,8 +579,8 @@ export async function syncBusinessCentral(specificCompany?: string) {
           skipDuplicates: true
         });
       }
-      for (const update of piUpdates) {
-        await prisma.purchaseInvoice.update(update);
+      if (piUpdates.length > 0) {
+        await chunkedUpdate(piUpdates, (u) => prisma.purchaseInvoice.update(u));
       }
 
       if (activeVendorDocumentIds.size > 0) {
