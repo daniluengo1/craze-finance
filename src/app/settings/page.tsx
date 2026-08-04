@@ -76,15 +76,32 @@ export default function SettingsPage() {
 
   const syncBcData = async () => {
     setSyncingBc(true);
-    setMessage('Iniciando sincronización con Business Central... Esto puede tardar unos minutos.');
+    const companiesToSync = [
+      'CRAZE', 
+      'Craze Iberia SL', 
+      'Craze UK', 
+      'CRAZE Group AG', 
+      'Craze Entertainment'
+    ];
+    let totalCust = 0;
+    let totalInv = 0;
+
     try {
-      const res = await fetch('/api/sync-bc', { method: 'POST' });
-      const data = await res.json();
-      if (res.ok) {
-        setMessage(`Sincronización completada con éxito. Clientes procesados: ${data.stats?.customers}, Facturas procesadas: ${data.stats?.invoices}`);
-      } else {
-        setMessage(`Error en sincronización: ${data.error || 'Desconocido'}`);
+      for (const comp of companiesToSync) {
+        setMessage(`Sincronizando ${comp}... Por favor espera.`);
+        const res = await fetch('/api/sync-bc', { 
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ company: comp })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(`Error en ${comp}: ${data.error || 'Desconocido'}`);
+        }
+        totalCust += data.stats?.customers || 0;
+        totalInv += data.stats?.invoices || 0;
       }
+      setMessage(`Sincronización completada con éxito. Clientes procesados: ${totalCust}, Facturas procesadas: ${totalInv}`);
     } catch (error: any) {
       setMessage(`Error de conexión al sincronizar: ${error.message}`);
     } finally {
