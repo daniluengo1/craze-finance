@@ -1,21 +1,14 @@
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import prisma from '@/lib/prisma';
-import { generateReportHtml } from '@/lib/reportBuilder';
-import puppeteer from 'puppeteer-core';
-import chromium from '@sparticuz/chromium';
 
 export async function POST(request: Request) {
   try {
-    const { customerId, invoiceIds, to, subject, message } = await request.json();
+    const { customerId, invoiceIds, to, subject, message, pdfBase64 } = await request.json();
 
-    if (!customerId || !invoiceIds || !Array.isArray(invoiceIds) || invoiceIds.length === 0 || !to || !subject || !message) {
+    if (!customerId || !invoiceIds || !Array.isArray(invoiceIds) || invoiceIds.length === 0 || !to || !subject || !message || !pdfBase64) {
       return NextResponse.json({ error: 'Faltan campos requeridos' }, { status: 400 });
     }
-
-    // The HTML report will be embedded directly in the email body
-    // since Vercel Serverless Functions do not support Puppeteer Chromium instances.
-    const htmlContent = await generateReportHtml(customerId, invoiceIds, message);
 
     // Check if we have DB config, else use ethereal
     let transporter;
@@ -64,16 +57,9 @@ export async function POST(request: Request) {
 
     const formattedMessage = message.split('\n\n').map((p: string) => `<p style="margin-top: 0; margin-bottom: 16px;">${p.replace(/\n/g, '<br/>')}</p>`).join('');
 
-    const isLocal = !!process.env.LOCAL_CHROME_EXECUTABLE;
-    const browser = await puppeteer.launch({
-      args: (isLocal ? puppeteer.defaultArgs() : chromium.args) as string[],
-      executablePath: await chromium.executablePath(),
-      headless: true,
-    });
-    const page = await browser.newPage();
-    await page.setContent(htmlContent, { waitUntil: 'load' });
-    const pdfBuffer = await page.pdf({ format: 'A4' });
-    await browser.close();
+    // Get PDF buffer from base64 string
+    const base64Data = pdfBase64.replace(/^data:application\/pdf;base64,/, "");
+    const pdfBuffer = Buffer.from(base64Data, 'base64');
 
     const info = await transporter.sendMail({
       from: fromAddress,
