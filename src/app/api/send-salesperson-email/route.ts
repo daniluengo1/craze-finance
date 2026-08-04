@@ -65,7 +65,7 @@ export async function POST(request: Request) {
 
     const browser = await puppeteer.launch({ headless: true });
     const page = await browser.newPage();
-    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+    await page.setContent(htmlContent, { waitUntil: 'load' });
     const pdfBuffer = await page.pdf({ format: 'A4' });
     await browser.close();
 
