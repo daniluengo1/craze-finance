@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import prisma from '@/lib/prisma';
 import { generateReportHtml } from '@/lib/reportBuilder';
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-core';
+import chromium from '@sparticuz/chromium';
 
 export async function POST(request: Request) {
   try {
@@ -64,7 +65,13 @@ export async function POST(request: Request) {
 
     const formattedMessage = message.split('\n\n').map((p: string) => `<p style="margin-top: 0; margin-bottom: 16px;">${p.replace(/\n/g, '<br/>')}</p>`).join('');
 
-    const browser = await puppeteer.launch({ headless: true });
+    const isLocal = !!process.env.LOCAL_CHROME_EXECUTABLE;
+    const browser = await puppeteer.launch({
+      args: isLocal ? puppeteer.defaultArgs() : chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
+    });
     const page = await browser.newPage();
     await page.setContent(htmlContent, { waitUntil: 'load' });
     const pdfBuffer = await page.pdf({ format: 'A4' });
