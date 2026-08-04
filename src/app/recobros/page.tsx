@@ -271,6 +271,30 @@ export default function RecobrosPage() {
   const confirmSendEmail = async () => {
     setIsSendingEmail(true);
     try {
+      // Generate PDF on client side to bypass Vercel Puppeteer limits
+      const previewRes = await fetch(`/api/preview-report?customerId=${emailDraft.customerId}&invoices=${emailDraft.invoices.map((i: any) => i.id).join(',')}&message=${encodeURIComponent(emailDraft.message)}`);
+      const htmlContent = await previewRes.text();
+      
+      // Load html2pdf dynamically
+      const html2pdf = (await import('html2pdf.js' as any)).default;
+      
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = htmlContent;
+      tempDiv.style.position = 'absolute';
+      tempDiv.style.left = '-9999px';
+      tempDiv.style.top = '-9999px';
+      document.body.appendChild(tempDiv);
+      
+      const pdfBase64 = await html2pdf().set({
+        margin: [10, 10, 10, 10],
+        filename: 'Facturas_Vencidas.pdf',
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      }).from(tempDiv).output('datauristring');
+      
+      document.body.removeChild(tempDiv);
+
       const res = await fetch('/api/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -279,7 +303,8 @@ export default function RecobrosPage() {
           invoiceIds: emailDraft.invoices.map((i: any) => i.id),
           to: emailDraft.to,
           subject: emailDraft.subject,
-          message: emailDraft.message
+          message: emailDraft.message,
+          pdfBase64: pdfBase64
         })
       });
       const data = await res.json();
@@ -309,6 +334,30 @@ export default function RecobrosPage() {
   const confirmSendSpEmail = async () => {
     setIsSendingSpEmail(true);
     try {
+      // Generate PDF on client side to bypass Vercel Puppeteer limits
+      const previewRes = await fetch(`/api/preview-report?customerId=${spEmailDraft.customerId}&invoices=${spEmailDraft.invoices.map((i: any) => i.id).join(',')}&message=${encodeURIComponent(spEmailDraft.message)}`);
+      const htmlContent = await previewRes.text();
+      
+      // Load html2pdf dynamically
+      const html2pdf = (await import('html2pdf.js' as any)).default;
+      
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = htmlContent;
+      tempDiv.style.position = 'absolute';
+      tempDiv.style.left = '-9999px';
+      tempDiv.style.top = '-9999px';
+      document.body.appendChild(tempDiv);
+      
+      const pdfBase64 = await html2pdf().set({
+        margin: [10, 10, 10, 10],
+        filename: 'Facturas_Vencidas.pdf',
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      }).from(tempDiv).output('datauristring');
+      
+      document.body.removeChild(tempDiv);
+
       const res = await fetch('/api/send-salesperson-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -317,7 +366,8 @@ export default function RecobrosPage() {
           invoiceIds: spEmailDraft.invoices.map((i: any) => i.id),
           to: spEmailDraft.to,
           subject: spEmailDraft.subject,
-          message: spEmailDraft.message
+          message: spEmailDraft.message,
+          pdfBase64: pdfBase64
         })
       });
       const data = await res.json();
