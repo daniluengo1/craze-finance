@@ -324,8 +324,8 @@ export default function RecobrosPage() {
       } else {
         alert('Error al enviar correo: ' + data.error);
       }
-    } catch (e) {
-      alert('Error en el sistema de correos.');
+    } catch (e: any) {
+      alert('Error en el sistema de correos: ' + e.message);
     } finally {
       setIsSendingEmail(false);
     }
@@ -387,8 +387,8 @@ export default function RecobrosPage() {
       } else {
         alert('Error al enviar correo al comercial: ' + data.error);
       }
-    } catch (e) {
-      alert('Error en el sistema de correos.');
+    } catch (e: any) {
+      alert('Error en el sistema de correos al comercial: ' + e.message);
     } finally {
       setIsSendingSpEmail(false);
     }
