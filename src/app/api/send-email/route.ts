@@ -1,21 +1,14 @@
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import prisma from '@/lib/prisma';
-import { generateReportHtml } from '@/lib/reportBuilder';
-import puppeteer from 'puppeteer-core';
-import chromium from '@sparticuz/chromium';
 
 export async function POST(request: Request) {
   try {
-    const { customerId, invoiceIds, to, subject, message } = await request.json();
+    const { customerId, invoiceIds, to, subject, message, pdfBase64 } = await request.json();
 
-    if (!invoiceIds || !Array.isArray(invoiceIds) || invoiceIds.length === 0 || !to || !subject || !message || !customerId) {
+    if (!invoiceIds || !Array.isArray(invoiceIds) || invoiceIds.length === 0 || !to || !subject || !message || !customerId || !pdfBase64) {
       return NextResponse.json({ error: 'Faltan campos requeridos' }, { status: 400 });
     }
-
-    // The HTML report will be embedded directly in the email body
-    // since Vercel Serverless Functions do not support Puppeteer Chromium instances.
-    const htmlContent = await generateReportHtml(customerId, invoiceIds, message);
 
     // Check if we have DB config, else use ethereal
     let transporter;
@@ -48,15 +41,19 @@ export async function POST(request: Request) {
       console.log('Using Ethereal account:', testAccount.user);
     }
 
+    // Get PDF buffer from base64 string
+    const base64Data = pdfBase64.replace(/^data:application\/pdf;base64,/, "");
+    const pdfBuffer = Buffer.from(base64Data, 'base64');
+
     const fromAddress = emailConfig?.fromName && emailConfig?.fromEmail 
       ? `"${emailConfig.fromName}" <${emailConfig.fromEmail}>` 
       : process.env.SMTP_FROM || '"Craze Finance" <no-reply@craze.com>';
 
     const signature = `
-      <div style="font-family: Arial, sans-serif; font-size: 14px; color: #333; margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px;">
-        <p>Thanks and regards,</p>
-        <p style="margin-bottom: 5px;"><b>CRAZE FINANCIAL DEPARTMENT</b></p>
-        <p style="margin: 0;">E-Mail <a href="mailto:invoice@craze-group.com" style="color: #3b82f6; text-decoration: none;">invoice@craze-group.com</a></p>
+      <div style="margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px; font-size: 14px; color: #555;">
+        <p style="margin: 0; font-weight: bold; color: #111;">CRAZE GmbH Finance Team</p>
+        <p style="margin: 5px 0;">Haynauer Str. 72 a | 12249 Berlin | Germany</p>
+        <p style="margin: 0;">Email <a href="mailto:finance@craze.toys" style="color: #3b82f6; text-decoration: none;">finance@craze.toys</a></p>
         <p style="margin: 0;">Web <a href="https://www.craze-group.com" style="color: #3b82f6; text-decoration: none;">www.craze-group.com</a></p>
         <br/>
         <img src="cid:crazelogo" alt="Craze Group" width="130" style="margin-top: 10px; display: block;" />
@@ -64,17 +61,6 @@ export async function POST(request: Request) {
     `;
 
     const formattedMessage = message.split('\n\n').map((p: string) => `<p style="margin-top: 0; margin-bottom: 16px;">${p.replace(/\n/g, '<br/>')}</p>`).join('');
-
-    const isLocal = !!process.env.LOCAL_CHROME_EXECUTABLE;
-    const browser = await puppeteer.launch({
-      args: (isLocal ? puppeteer.defaultArgs() : chromium.args) as string[],
-      executablePath: await chromium.executablePath(),
-      headless: true,
-    });
-    const page = await browser.newPage();
-    await page.setContent(htmlContent, { waitUntil: 'load' });
-    const pdfBuffer = await page.pdf({ format: 'A4' });
-    await browser.close();
 
     const info = await transporter.sendMail({
       from: fromAddress,
