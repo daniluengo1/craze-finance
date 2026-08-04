@@ -36,8 +36,12 @@ async function chunkedUpdate(updates: any[], updateFn: (update: any) => Promise<
 async function fetchODataAllPages(startUrl: string, accessToken: string): Promise<any[]> {
   let nextUrl: string | null = startUrl;
   const allResults: any[] = [];
+  let pageCount = 0;
+  const MAX_PAGES = 10; // Hard limit to avoid Vercel timeouts (10 pages * 1000 items = 10,000 items max)
   
-  while (nextUrl) {
+  while (nextUrl && pageCount < MAX_PAGES) {
+    pageCount++;
+    console.log(`Fetching page ${pageCount}: ${nextUrl}`);
     const response: any = await fetch(nextUrl, {
       headers: { Authorization: `Bearer ${accessToken}`, 'Accept': 'application/json' }
     });
@@ -49,7 +53,13 @@ async function fetchODataAllPages(startUrl: string, accessToken: string): Promis
     if (jsonData.value && Array.isArray(jsonData.value)) {
       allResults.push(...jsonData.value);
     }
-    nextUrl = jsonData['@odata.nextLink'] || null;
+    
+    const newNextUrl = jsonData['@odata.nextLink'] || null;
+    if (newNextUrl === nextUrl) {
+      console.warn('Infinite loop detected in OData nextLink. Breaking.');
+      break;
+    }
+    nextUrl = newNextUrl;
   }
   return allResults;
 }
