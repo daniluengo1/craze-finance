@@ -82,7 +82,7 @@ export async function POST(request: Request) {
       attachments: [
         {
           filename: 'Facturas_Vencidas.pdf',
-          content: pdfBuffer,
+          content: Buffer.from(pdfBuffer),
           contentType: 'application/pdf'
         },
         {
