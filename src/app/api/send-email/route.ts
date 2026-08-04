@@ -80,7 +80,7 @@ export async function POST(request: Request) {
       attachments: [
         {
           filename: 'logo.png',
-          path: process.cwd() + '/public/logo.png',
+          path: 'https://craze-finance.vercel.app/logo.png',
           cid: 'crazelogo'
         }
       ]
