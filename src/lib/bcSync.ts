@@ -24,7 +24,29 @@ async function getAccessToken(tenantId: string, clientId: string, clientSecret: 
   return data.access_token;
 }
 
-export async function syncBusinessCentral() {
+// Helper to fetch all pages of OData V4 response
+async function fetchODataAllPages(startUrl: string, accessToken: string): Promise<any[]> {
+  let nextUrl: string | null = startUrl;
+  const allResults: any[] = [];
+  
+  while (nextUrl) {
+    const response: any = await fetch(nextUrl, {
+      headers: { Authorization: `Bearer ${accessToken}`, 'Accept': 'application/json' }
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`OData request failed: ${errorText}`);
+    }
+    const jsonData: any = await response.json();
+    if (jsonData.value && Array.isArray(jsonData.value)) {
+      allResults.push(...jsonData.value);
+    }
+    nextUrl = jsonData['@odata.nextLink'] || null;
+  }
+  return allResults;
+}
+
+export async function syncBusinessCentral(specificCompany?: string) {
   const config = await prisma.businessCentralConfig.findUnique({ where: { id: 1 } });
   if (!config || !config.tenantId || !config.clientId || !config.clientSecret) {
     throw new Error('La configuración de Business Central está incompleta. Por favor, rellena todos los campos en Ajustes.');
@@ -42,7 +64,7 @@ export async function syncBusinessCentral() {
   if (!compRes.ok) throw new Error(`Failed to fetch companies: ${await compRes.text()}`);
   const compData = await compRes.json();
 
-  const targetCompanyNames = [
+  const targetCompanyNames = specificCompany ? [specificCompany] : [
     'CRAZE', 
     'Craze Iberia SL', 
     'Craze UK', 
@@ -119,27 +141,28 @@ export async function syncBusinessCentral() {
       // Use Custom API instead of standard API to get salesperson details
       const customApiBaseUrl = `https://api.businesscentral.dynamics.com/v2.0/${config.tenantId}/${config.environment}/api/craze/integrations/v1.0/companies(${companyId})`;
       const customersUrl = `${customApiBaseUrl}/customers`;
-      const custRes = await fetch(customersUrl, {
-        headers: { Authorization: `Bearer ${accessToken}`, 'Accept': 'application/json' }
-      });
       
-      if (!custRes.ok) throw new Error(`Failed to fetch customers from custom API: ${await custRes.text()}`);
-      const customersData = await custRes.json();
+      const allCustomersData = await fetchODataAllPages(customersUrl, accessToken);
       
-      if (customersData.value && customersData.value.length > 0) {
-        console.log('Sample custom customer:', JSON.stringify(customersData.value[0]));
+      if (allCustomersData.length > 0) {
+        console.log('Sample custom customer:', JSON.stringify(allCustomersData[0]));
       }
 
-      for (const c of customersData.value) {
+      const allDbCustomers = await prisma.customer.findMany({
+        where: { companyId: exactCompanyName },
+        select: { id: true, bcId: true, name: true, email: true, paymentMethod: true, riskLimit: true, balance: true, salespersonCode: true, salespersonName: true }
+      });
+      const dbCustomerMap = new Map(allDbCustomers.map(c => [c.bcId, c]));
+
+      const custCreates: any[] = [];
+      const custUpdates: any[] = [];
+
+      for (const c of allCustomersData) {
         // Handle both standard and custom API field names
         const customerNumber = c.number || c.no;
         if (!customerNumber) continue;
 
         const pmCode = c.paymentMethodId && pmMap[c.paymentMethodId] ? pmMap[c.paymentMethodId] : 'Standard';
-
-        const existingCustomer = await prisma.customer.findUnique({
-          where: { bcId_companyId: { bcId: customerNumber, companyId: exactCompanyName } }
-        });
 
         const custData = {
           name: c.displayName || c.name || c.number,
@@ -149,23 +172,42 @@ export async function syncBusinessCentral() {
           balance: c.balance || c.balanceLCY || 0,
           salespersonCode: c.salespersonCode || c.salesPersonCode || null,
           salespersonName: c.salespersonName || c.salesPersonName || (c.salespersonCode ? salespeopleMap.get(c.salespersonCode) : null) || (c.salesPersonCode ? salespeopleMap.get(c.salesPersonCode) : null) || c.salespersonCode || c.salesPersonCode || null,
+          companyId: exactCompanyName
         };
 
-        if (existingCustomer) {
-          await prisma.customer.update({
-            where: { id: existingCustomer.id },
-            data: custData
-          });
+        const existingCust = dbCustomerMap.get(customerNumber);
+        if (existingCust) {
+          if (
+            existingCust.name !== custData.name ||
+            existingCust.email !== custData.email ||
+            existingCust.paymentMethod !== custData.paymentMethod ||
+            existingCust.riskLimit !== custData.riskLimit ||
+            existingCust.balance !== custData.balance ||
+            existingCust.salespersonCode !== custData.salespersonCode ||
+            existingCust.salespersonName !== custData.salespersonName
+          ) {
+            custUpdates.push({
+              where: { id: existingCust.id },
+              data: custData
+            });
+          }
         } else {
-          await prisma.customer.create({
-            data: {
-              bcId: customerNumber,
-              companyId: exactCompanyName,
-              ...custData
-            }
+          custCreates.push({
+            bcId: customerNumber,
+            ...custData
           });
         }
         totalStats.customers++;
+      }
+
+      if (custCreates.length > 0) {
+        await prisma.customer.createMany({
+          data: custCreates,
+          skipDuplicates: true
+        });
+      }
+      for (const update of custUpdates) {
+        await prisma.customer.update(update);
       }
 
       // 3. Fetch Customer Ledger Entries (Invoices/Recobros)
@@ -174,16 +216,30 @@ export async function syncBusinessCentral() {
         const customApiBaseUrl = `https://api.businesscentral.dynamics.com/v2.0/${config.tenantId}/${config.environment}/api/craze/integrations/v1.0/companies(${companyId})`;
         const ledgerUrl = `${customApiBaseUrl}/custLedgerEntries?$filter=(documentType eq 'Invoice' or documentType eq 'Credit Memo' or documentType eq 'Refund') and open eq true`;
         
-        const ledgerRes = await fetch(ledgerUrl, {
-          headers: { Authorization: `Bearer ${accessToken}`, 'Accept': 'application/json' }
-        });
-
-        if (!ledgerRes.ok) throw new Error(`Custom API failed: ${await ledgerRes.text()}`);
-        const ledgerData = await ledgerRes.json();
+        const allLedgerData = await fetchODataAllPages(ledgerUrl, accessToken);
         const syncedCustomerInvoiceIds: string[] = [];
+        
+        // --- BULK OPTIMIZATION START ---
+        // Fetch all customers for this company at once
+        const allCustomers = await prisma.customer.findMany({ where: { companyId: exactCompanyName } });
+        const customerMap = new Map(allCustomers.map(c => [c.bcId, c]));
+        
+        // Fetch all existing invoices for this company at once
+        const allInvoices = await prisma.invoice.findMany({ 
+          where: { companyId: exactCompanyName },
+          select: { id: true, bcId: true, amount: true, originalAmount: true, status: true, dueDate: true, paymentMethod: true }
+        });
+        const invoiceMap = new Map(allInvoices.map(i => [i.bcId, i]));
+        
+        const invoiceCreates: any[] = [];
+        const invoiceUpdates: any[] = [];
+        const activeDocumentIds = new Set<string>();
 
-        for (const entry of ledgerData.value) {
-          const customer = await prisma.customer.findUnique({ where: { bcId_companyId: { bcId: entry.customerNo, companyId: exactCompanyName } } });
+        for (const entry of allLedgerData) {
+          const customerBcId = entry.customerNo || entry.customerNumber || entry.sellToCustomerNo || entry.Customer_No;
+          if (!customerBcId) continue;
+          
+          const customer = customerMap.get(String(customerBcId));
           if (!customer) continue;
 
           const remainingAmount = entry.remainingAmount !== undefined ? entry.remainingAmount : 0;
@@ -191,84 +247,113 @@ export async function syncBusinessCentral() {
           const dueDate = entry.dueDate ? new Date(entry.dueDate) : new Date();
           const paymentMethodToSave = entry.paymentMethodCode ? entry.paymentMethodCode : customer.paymentMethod;
           
-          // Use promisedPayDate as the fallback for confirmedPaymentDate since it wasn't added to API
           const confirmedDateStr = entry.confirmedPaymentDate || entry.crazeConfirmedPaymentDate || entry.craze_ConfirmedPaymentDate || entry.promisedPayDate;
-          // Note: In BC, an empty date is often "0001-01-01" or similar. We should ignore invalid dates.
           const confirmedPaymentDate = (confirmedDateStr && !confirmedDateStr.startsWith('0001-01-01')) ? new Date(confirmedDateStr) : null;
 
-          syncedCustomerInvoiceIds.push(entry.documentNo);
+          const documentBcId = entry.documentNo || entry.documentNumber || entry.Document_No;
+          if (!documentBcId) continue;
 
-          const existingInvoice = await prisma.invoice.findUnique({
-            where: { bcId_companyId: { bcId: entry.documentNo, companyId: exactCompanyName } }
-          });
+          activeDocumentIds.add(String(documentBcId));
 
           const invData = {
             customerId: customer.id,
             type: entry.documentType === 'Credit Memo' ? 'Credit Memo' : entry.documentType === 'Refund' ? 'Refund' : 'invoice',
             status: dueDate < new Date() ? 'Overdue' : 'Open',
-            amount: entry.remainingAmount,
-            originalAmount: entry.originalAmount,
+            amount: remainingAmount,
+            originalAmount: originalAmount,
             currencyCode: entry.currencyCode || 'EUR',
             paymentMethod: paymentMethodToSave,
             dueDate,
             confirmedPaymentDate,
+            companyId: exactCompanyName
           };
 
+          const existingInvoice = invoiceMap.get(String(documentBcId));
           if (existingInvoice) {
-            await prisma.invoice.update({
-              where: { id: existingInvoice.id },
-              data: invData
-            });
+            // Only update if something changed
+            if (
+              existingInvoice.amount !== invData.amount ||
+              existingInvoice.originalAmount !== invData.originalAmount ||
+              existingInvoice.status !== invData.status ||
+              existingInvoice.paymentMethod !== invData.paymentMethod ||
+              existingInvoice.dueDate.getTime() !== invData.dueDate.getTime()
+            ) {
+              invoiceUpdates.push({
+                where: { id: existingInvoice.id },
+                data: invData
+              });
+            }
           } else {
-            await prisma.invoice.create({
-              data: {
-                bcId: entry.documentNo,
-                companyId: exactCompanyName,
-                ...invData
-              }
+            invoiceCreates.push({
+              bcId: String(documentBcId),
+              ...invData
             });
           }
           totalStats.invoices++;
         }
+        
+        // Execute creates in bulk
+        if (invoiceCreates.length > 0) {
+          await prisma.invoice.createMany({
+            data: invoiceCreates,
+            skipDuplicates: true
+          });
+        }
+        
+        // Execute updates in a loop (fast enough usually, or we can transaction it)
+        for (const update of invoiceUpdates) {
+          await prisma.invoice.update(update);
+        }
 
-        if (syncedCustomerInvoiceIds.length > 0) {
+        // Close invoices that are no longer active
+        if (activeDocumentIds.size > 0) {
           await prisma.invoice.updateMany({
             where: { 
               companyId: exactCompanyName,
-              bcId: { notIn: syncedCustomerInvoiceIds } 
+              bcId: { notIn: Array.from(activeDocumentIds) } 
             },
             data: { status: 'Closed' }
           });
         }
+        // --- BULK OPTIMIZATION END ---
       } catch (error) {
         console.warn(`[${exactCompanyName}] Custom API failed, falling back to ODataV4:`, error);
         
         const fallbackLedgerUrl = `${odataBaseUrl}/Company('${escapedCompanyName}')/Cust_LedgerEntries?$filter=Document_Type eq 'Invoice' and Open eq true`;
-        const fallbackRes = await fetch(fallbackLedgerUrl, {
-          headers: { Authorization: `Bearer ${accessToken}`, 'Accept': 'application/json' }
-        });
-        
-        if (fallbackRes.ok) {
-          const fallbackData = await fallbackRes.json();
-          const syncedCustomerInvoiceIds: string[] = [];
+        try {
+          const allFallbackData = await fetchODataAllPages(fallbackLedgerUrl, accessToken);
+          // --- BULK OPTIMIZATION START (Fallback) ---
+          const fallbackAllCustomers = await prisma.customer.findMany({ where: { companyId: exactCompanyName } });
+          const fallbackCustomerMap = new Map(fallbackAllCustomers.map(c => [c.bcId, c]));
+          
+          const fallbackAllInvoices = await prisma.invoice.findMany({ 
+            where: { companyId: exactCompanyName },
+            select: { id: true, bcId: true, amount: true, originalAmount: true, status: true, dueDate: true, paymentMethod: true }
+          });
+          const fallbackInvoiceMap = new Map(fallbackAllInvoices.map(i => [i.bcId, i]));
+          
+          const fallbackCreates: any[] = [];
+          const fallbackUpdates: any[] = [];
+          const fallbackActiveIds = new Set<string>();
 
-          for (const entry of fallbackData.value) {
-            const customer = await prisma.customer.findUnique({ where: { bcId_companyId: { bcId: entry.Customer_No, companyId: exactCompanyName } } });
+          for (const entry of allFallbackData) {
+            const customerBcId = entry.Customer_No || entry.customerNo || entry.customerNumber || entry.sellToCustomerNo;
+            if (!customerBcId) continue;
+
+            const customer = fallbackCustomerMap.get(String(customerBcId));
             if (!customer) continue;
 
             const remainingAmount = entry.Remaining_Amount !== undefined ? entry.Remaining_Amount : 0;
             const originalAmount = entry.Amount !== undefined ? entry.Amount : 0;
             const dueDate = entry.Due_Date ? new Date(entry.Due_Date) : new Date();
             
-            // Map Promised_Pay_Date as requested by user
             const confirmedDateStr = entry.Promised_Pay_Date;
             const confirmedPaymentDate = (confirmedDateStr && !confirmedDateStr.startsWith('0001-01-01')) ? new Date(confirmedDateStr) : null;
 
-            syncedCustomerInvoiceIds.push(entry.Document_No);
+            const documentBcId = entry.Document_No || entry.documentNo || entry.documentNumber;
+            if (!documentBcId) continue;
 
-            const existingFallbackInvoice = await prisma.invoice.findUnique({
-              where: { bcId_companyId: { bcId: entry.Document_No, companyId: exactCompanyName } }
-            });
+            fallbackActiveIds.add(String(documentBcId));
 
             const fallbackInvData = {
               amount: remainingAmount,
@@ -276,115 +361,152 @@ export async function syncBusinessCentral() {
               dueDate: dueDate,
               status: dueDate < new Date() ? 'Overdue' : 'Open',
               paymentMethod: customer.paymentMethod,
-              confirmedPaymentDate: confirmedPaymentDate
+              confirmedPaymentDate: confirmedPaymentDate,
+              customerId: customer.id,
+              type: 'Invoice',
+              companyId: exactCompanyName
             };
 
-            if (existingFallbackInvoice) {
-              await prisma.invoice.update({
-                where: { id: existingFallbackInvoice.id },
-                data: fallbackInvData
-              });
+            const existingFallback = fallbackInvoiceMap.get(String(documentBcId));
+            if (existingFallback) {
+              if (
+                existingFallback.amount !== fallbackInvData.amount ||
+                existingFallback.originalAmount !== fallbackInvData.originalAmount ||
+                existingFallback.status !== fallbackInvData.status ||
+                existingFallback.paymentMethod !== fallbackInvData.paymentMethod ||
+                existingFallback.dueDate.getTime() !== fallbackInvData.dueDate.getTime()
+              ) {
+                fallbackUpdates.push({
+                  where: { id: existingFallback.id },
+                  data: fallbackInvData
+                });
+              }
             } else {
-              await prisma.invoice.create({
-                data: {
-                  bcId: entry.Document_No,
-                  companyId: exactCompanyName,
-                  customerId: customer.id,
-                  type: 'Invoice',
-                  ...fallbackInvData
-                }
+              fallbackCreates.push({
+                bcId: String(documentBcId),
+                ...fallbackInvData
               });
             }
             totalStats.invoices++;
           }
+          
+          if (fallbackCreates.length > 0) {
+            await prisma.invoice.createMany({
+              data: fallbackCreates,
+              skipDuplicates: true
+            });
+          }
+          for (const update of fallbackUpdates) {
+            await prisma.invoice.update(update);
+          }
 
-          if (syncedCustomerInvoiceIds.length > 0) {
+          if (fallbackActiveIds.size > 0) {
             await prisma.invoice.updateMany({
               where: { 
                 companyId: exactCompanyName,
-                bcId: { notIn: syncedCustomerInvoiceIds } 
+                bcId: { notIn: Array.from(fallbackActiveIds) } 
               },
               data: { status: 'Closed' }
             });
           }
-        } else {
-          console.error(`[${exactCompanyName}] Fallback Cust_LedgerEntries also failed:`, await fallbackRes.text());
+          // --- BULK OPTIMIZATION END (Fallback) ---
+        } catch (error: any) {
+          console.error(`[${exactCompanyName}] Fallback Cust_LedgerEntries also failed:`, error.message);
         }
       }
 
       // 4. Fetch Vendors
       console.log(`[${exactCompanyName}] Sincronizando Vendors...`);
       const vendorsUrl = `${baseUrl}${companySegment}/vendors`;
-      const venRes = await fetch(vendorsUrl, {
-        headers: { Authorization: `Bearer ${accessToken}`, 'Accept': 'application/json' }
+      const allVendorsData = await fetchODataAllPages(vendorsUrl, accessToken);
+      
+      const allDbVendors = await prisma.vendor.findMany({
+        where: { companyId: exactCompanyName },
+        select: { id: true, bcId: true, name: true, email: true, paymentMethod: true, balance: true }
       });
-      
-      if (!venRes.ok) throw new Error(`Failed to fetch vendors: ${await venRes.text()}`);
-      const vendorsData = await venRes.json();
-      
-      for (const v of vendorsData.value) {
-        const pmCode = v.paymentMethodId && pmMap[v.paymentMethodId] ? pmMap[v.paymentMethodId] : 'Standard';
+      const dbVendorMap = new Map(allDbVendors.map(v => [v.bcId, v]));
 
-        const existingVendor = await prisma.vendor.findUnique({
-          where: { bcId_companyId: { bcId: v.number, companyId: exactCompanyName } }
-        });
+      const venCreates: any[] = [];
+      const venUpdates: any[] = [];
+
+      for (const v of allVendorsData) {
+        const pmCode = v.paymentMethodId && pmMap[v.paymentMethodId] ? pmMap[v.paymentMethodId] : 'Standard';
 
         const venData = {
           name: v.displayName || v.number,
           email: v.email || null,
           paymentMethod: pmCode,
           balance: v.balance || 0,
+          companyId: exactCompanyName
         };
 
-        if (existingVendor) {
-          await prisma.vendor.update({
-            where: { id: existingVendor.id },
-            data: venData
-          });
+        const existingVen = dbVendorMap.get(v.number);
+        if (existingVen) {
+          if (
+            existingVen.name !== venData.name ||
+            existingVen.email !== venData.email ||
+            existingVen.paymentMethod !== venData.paymentMethod ||
+            existingVen.balance !== venData.balance
+          ) {
+            venUpdates.push({
+              where: { id: existingVen.id },
+              data: venData
+            });
+          }
         } else {
-          await prisma.vendor.create({
-            data: {
-              bcId: v.number,
-              companyId: exactCompanyName,
-              ...venData
-            }
+          venCreates.push({
+            bcId: v.number,
+            ...venData
           });
         }
         totalStats.vendors++;
+      }
+
+      if (venCreates.length > 0) {
+        await prisma.vendor.createMany({
+          data: venCreates,
+          skipDuplicates: true
+        });
+      }
+      for (const update of venUpdates) {
+        await prisma.vendor.update(update);
       }
 
       // 5. Fetch Vendor Ledger Entries (Pagos a proveedores)
       console.log(`[${exactCompanyName}] Sincronizando Vendor Ledger Entries...`);
       const vendorLedgerUrl = `${customApiBaseUrl}/vendorLedgerEntries?$filter=(documentType eq 'Invoice' or documentType eq 'Credit Memo') and open eq true`;
       
-      const vendorLedgerRes = await fetch(vendorLedgerUrl, {
-        headers: { Authorization: `Bearer ${accessToken}`, 'Accept': 'application/json' }
-      });
-
-      if (!vendorLedgerRes.ok) {
-        console.warn(`[${exactCompanyName}] Failed to fetch VendorLedgerEntries: ${await vendorLedgerRes.text()}`);
+      let allVendorLedgerData: any[] = [];
+      try {
+        allVendorLedgerData = await fetchODataAllPages(vendorLedgerUrl, accessToken);
+      } catch (err: any) {
+        console.warn(`[${exactCompanyName}] Failed to fetch VendorLedgerEntries: ${err.message}`);
         continue;
       }
+      const allDbVendorsL = await prisma.vendor.findMany({ where: { companyId: exactCompanyName } });
+      const dbVendorMapL = new Map(allDbVendorsL.map(v => [v.bcId, v]));
 
-      const vendorLedgerData = await vendorLedgerRes.json();
+      const allPurchaseInvoices = await prisma.purchaseInvoice.findMany({
+        where: { companyId: exactCompanyName },
+        select: { id: true, bcId: true, amount: true, originalAmount: true, status: true, dueDate: true, paymentMethod: true, schedulePaymentDate: true, percentagePaymentApproval: true, approvalUsers: true, approvedUsers: true, rejectedUsers: true, noPayment: true, noPaymentReason: true }
+      });
+      const purchaseInvoiceMap = new Map(allPurchaseInvoices.map(p => [p.bcId, p]));
 
-      const syncedVendorInvoiceIds: string[] = [];
+      const piCreates: any[] = [];
+      const piUpdates: any[] = [];
+      const activeVendorDocumentIds = new Set<string>();
 
-      for (const entry of vendorLedgerData.value) {
+      for (const entry of allVendorLedgerData) {
         const vendorNo = entry.vendorNo;
         if (!vendorNo) continue;
 
-        const vendor = await prisma.vendor.findUnique({ where: { bcId_companyId: { bcId: vendorNo, companyId: exactCompanyName } } });
+        const vendor = dbVendorMapL.get(vendorNo);
         if (!vendor) continue;
 
         const documentNo = entry.documentNo;
         if (!documentNo) continue;
 
-        syncedVendorInvoiceIds.push(documentNo);
-
-        const existingPurchaseInvoice = await prisma.purchaseInvoice.findFirst({
-          where: { bcId: documentNo, companyId: exactCompanyName }
-        });
+        activeVendorDocumentIds.add(documentNo);
 
         const entryStatus = entry.open ? 'Open' : 'Closed';
         const dueDate = new Date(entry.dueDate || new Date());
@@ -408,32 +530,56 @@ export async function syncBusinessCentral() {
           rejectedUsers: entry.rejectedUsersBCT || null,
           noPayment: noPaymentVal,
           noPaymentReason: entry.responsibleNoPaymentBCT || entry.onHold || null,
+          vendorId: vendor.id,
+          companyId: exactCompanyName,
+          type: 'Invoice'
         };
 
-        if (existingPurchaseInvoice) {
-          await prisma.purchaseInvoice.update({
-            where: { id: existingPurchaseInvoice.id },
-            data: pInvData
-          });
+        const existingPI = purchaseInvoiceMap.get(documentNo);
+        if (existingPI) {
+          if (
+            existingPI.amount !== pInvData.amount ||
+            existingPI.originalAmount !== pInvData.originalAmount ||
+            existingPI.status !== pInvData.status ||
+            existingPI.paymentMethod !== pInvData.paymentMethod ||
+            existingPI.dueDate.getTime() !== pInvData.dueDate.getTime() ||
+            (existingPI.schedulePaymentDate?.getTime() || 0) !== (pInvData.schedulePaymentDate?.getTime() || 0) ||
+            existingPI.percentagePaymentApproval !== pInvData.percentagePaymentApproval ||
+            existingPI.approvalUsers !== pInvData.approvalUsers ||
+            existingPI.approvedUsers !== pInvData.approvedUsers ||
+            existingPI.rejectedUsers !== pInvData.rejectedUsers ||
+            existingPI.noPayment !== pInvData.noPayment ||
+            existingPI.noPaymentReason !== pInvData.noPaymentReason
+          ) {
+            piUpdates.push({
+              where: { id: existingPI.id },
+              data: pInvData
+            });
+          }
         } else {
-          await prisma.purchaseInvoice.create({
-            data: {
-              bcId: documentNo,
-              companyId: exactCompanyName,
-              vendorId: vendor.id,
-              type: entry.Document_Type || 'Invoice',
-              ...pInvData
-            }
+          piCreates.push({
+            bcId: documentNo,
+            ...pInvData
           });
         }
         totalStats.purchaseInvoices++;
       }
 
-      if (syncedVendorInvoiceIds.length > 0) {
+      if (piCreates.length > 0) {
+        await prisma.purchaseInvoice.createMany({
+          data: piCreates,
+          skipDuplicates: true
+        });
+      }
+      for (const update of piUpdates) {
+        await prisma.purchaseInvoice.update(update);
+      }
+
+      if (activeVendorDocumentIds.size > 0) {
         await prisma.purchaseInvoice.updateMany({
           where: { 
             companyId: exactCompanyName,
-            bcId: { notIn: syncedVendorInvoiceIds } 
+            bcId: { notIn: Array.from(activeVendorDocumentIds) } 
           },
           data: { status: 'Closed' }
         });
