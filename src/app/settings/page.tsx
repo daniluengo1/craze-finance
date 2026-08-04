@@ -88,18 +88,27 @@ export default function SettingsPage() {
 
     try {
       for (const comp of companiesToSync) {
-        setMessage(`Sincronizando ${comp}... Por favor espera.`);
-        const res = await fetch('/api/sync-bc', { 
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ company: comp })
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(`Error en ${comp}: ${data.error || 'Desconocido'}`);
+        const steps = [
+          { key: 'customers', label: 'Clientes' },
+          { key: 'invoices', label: 'Facturas' },
+          { key: 'vendors', label: 'Proveedores' },
+          { key: 'vendorInvoices', label: 'Fact. Proveedores' }
+        ];
+
+        for (const step of steps) {
+          setMessage(`Sincronizando ${comp} (${step.label})... Por favor espera.`);
+          const res = await fetch('/api/sync-bc', { 
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ company: comp, step: step.key })
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            throw new Error(`Error en ${comp} al sincronizar ${step.label}: ${data.error || 'Desconocido'}`);
+          }
+          totalCust += data.stats?.customers || 0;
+          totalInv += data.stats?.invoices || 0;
         }
-        totalCust += data.stats?.customers || 0;
-        totalInv += data.stats?.invoices || 0;
       }
       setMessage(`Sincronización completada con éxito. Clientes procesados: ${totalCust}, Facturas procesadas: ${totalInv}`);
     } catch (error: any) {
