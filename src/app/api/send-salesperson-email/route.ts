@@ -58,7 +58,7 @@ export async function POST(request: Request) {
     const formattedMessage = message.split('\n\n').map((p: string) => `<p style="margin-top: 0; margin-bottom: 16px;">${p.replace(/\n/g, '<br/>')}</p>`).join('');
 
     // Get PDF buffer from base64 string
-    const base64Data = pdfBase64.replace(/^data:application\/pdf;base64,/, "");
+    const base64Data = pdfBase64.split('base64,')[1] || pdfBase64.replace(/^data:application\/pdf.*?;base64,/, "");
     const pdfBuffer = Buffer.from(base64Data, 'base64');
 
     const info = await transporter.sendMail({
