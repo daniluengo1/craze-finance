@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import prisma from '@/lib/prisma';
-import puppeteer from 'puppeteer';
 import { generateReportHtml } from '@/lib/reportBuilder';
 
 export async function POST(request: Request) {
@@ -12,19 +11,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Faltan campos requeridos' }, { status: 400 });
     }
 
-    // Generate HTML for the PDF
+    // The HTML report will be embedded directly in the email body
+    // since Vercel Serverless Functions do not support Puppeteer Chromium instances.
     const htmlContent = await generateReportHtml(customerId, invoiceIds, message);
-
-    // Generate PDF using Puppeteer
-    const browser = await puppeteer.launch({ headless: true });
-    const page = await browser.newPage();
-    await page.setContent(htmlContent, { waitUntil: 'domcontentloaded' });
-    const pdfBuffer = await page.pdf({ 
-      format: 'A4', 
-      printBackground: true,
-      margin: { top: '20px', right: '20px', bottom: '20px', left: '20px' } 
-    });
-    await browser.close();
 
     // Check if we have DB config, else use ethereal
     let transporter;
@@ -79,16 +68,16 @@ export async function POST(request: Request) {
       to,
       subject,
       text: message, // plain text
-      html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+      html: `<div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; color: #333;">
               ${formattedMessage}
+              <br/><br/>
+              <div style="background-color: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; margin-top: 20px;">
+                <h3 style="margin-top: 0; color: #0f172a;">Detalle de Facturas:</h3>
+                ${htmlContent}
+              </div>
               ${signature}
              </div>`, 
       attachments: [
-        {
-          filename: 'Overdue_Report.pdf',
-          content: Buffer.from(pdfBuffer),
-          contentType: 'application/pdf'
-        },
         {
           filename: 'logo.png',
           path: process.cwd() + '/public/logo.png',
