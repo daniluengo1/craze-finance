@@ -42,24 +42,40 @@ async function fetchODataAllPages(startUrl: string, accessToken: string): Promis
   while (nextUrl && pageCount < MAX_PAGES) {
     pageCount++;
     console.log(`Fetching page ${pageCount}: ${nextUrl}`);
-    const response: any = await fetch(nextUrl, {
-      headers: { Authorization: `Bearer ${accessToken}`, 'Accept': 'application/json' }
-    });
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`OData request failed: ${errorText}`);
-    }
-    const jsonData: any = await response.json();
-    if (jsonData.value && Array.isArray(jsonData.value)) {
-      allResults.push(...jsonData.value);
-    }
     
-    const newNextUrl = jsonData['@odata.nextLink'] || null;
-    if (newNextUrl === nextUrl) {
-      console.warn('Infinite loop detected in OData nextLink. Breaking.');
-      break;
+    // Add an AbortController to prevent Vercel 504 timeouts if BC is too slow (fallback queries can hang)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout per page
+
+    try {
+      const response: any = await fetch(nextUrl, {
+        headers: { Authorization: `Bearer ${accessToken}`, 'Accept': 'application/json' },
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`OData request failed: ${errorText}`);
+      }
+      const jsonData: any = await response.json();
+      if (jsonData.value && Array.isArray(jsonData.value)) {
+        allResults.push(...jsonData.value);
+      }
+      
+      const newNextUrl = jsonData['@odata.nextLink'] || null;
+      if (newNextUrl === nextUrl) {
+        console.warn('Infinite loop detected in OData nextLink. Breaking.');
+        break;
+      }
+      nextUrl = newNextUrl;
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+      if (fetchError.name === 'AbortError') {
+        throw new Error(`Business Central API tardó demasiado en responder (más de 8 segundos). Si es una empresa sin la API personalizada, instala la extensión.`);
+      }
+      throw fetchError;
     }
-    nextUrl = newNextUrl;
   }
   return allResults;
 }
@@ -85,7 +101,7 @@ export async function syncBusinessCentral(specificCompany?: string, step: 'custo
   const targetCompanyNames = specificCompany ? [specificCompany] : [
     'CRAZE', 
     'Craze Iberia SL', 
-    'Craze UK', 
+    'Craze Toys', 
     'CRAZE Group AG', 
     'Craze Entertainment'
   ];
