@@ -67,10 +67,9 @@ export async function POST(request: Request) {
 
     const isLocal = !!process.env.LOCAL_CHROME_EXECUTABLE;
     const browser = await puppeteer.launch({
-      args: isLocal ? puppeteer.defaultArgs() : chromium.args,
-      defaultViewport: chromium.defaultViewport,
+      args: (isLocal ? puppeteer.defaultArgs() : chromium.args) as string[],
       executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
+      headless: true,
     });
     const page = await browser.newPage();
     await page.setContent(htmlContent, { waitUntil: 'load' });
