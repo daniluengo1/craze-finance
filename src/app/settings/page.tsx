@@ -124,7 +124,7 @@ export default function SettingsPage() {
         </header>
 
         {message && (
-          <div className="p-4 rounded-xl bg-blue-500/20 border border-blue-500/30 text-blue-200 font-medium">
+          <div className="p-4 rounded-xl bg-blue-100 border border-blue-300 text-blue-900 font-bold shadow-sm">
             {message}
           </div>
         )}
