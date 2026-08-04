@@ -54,7 +54,7 @@ async function fetchODataAllPages(startUrl: string, accessToken: string): Promis
   return allResults;
 }
 
-export async function syncBusinessCentral(specificCompany?: string) {
+export async function syncBusinessCentral(specificCompany?: string, step: 'customers' | 'invoices' | 'vendors' | 'vendorInvoices' | 'all' = 'all') {
   const config = await prisma.businessCentralConfig.findUnique({ where: { id: 1 } });
   if (!config || !config.tenantId || !config.clientId || !config.clientSecret) {
     throw new Error('La configuración de Business Central está incompleta. Por favor, rellena todos los campos en Ajustes.');
@@ -144,11 +144,13 @@ export async function syncBusinessCentral(specificCompany?: string) {
         console.warn(`[${exactCompanyName}] Failed to fetch payment methods: ${await pmRes.text()}`);
       }
 
-      // 2. Fetch Customers
-      console.log(`[${exactCompanyName}] Sincronizando Customers...`);
       // Use Custom API instead of standard API to get salesperson details
       const customApiBaseUrl = `https://api.businesscentral.dynamics.com/v2.0/${config.tenantId}/${config.environment}/api/craze/integrations/v1.0/companies(${companyId})`;
-      const customersUrl = `${customApiBaseUrl}/customers`;
+
+      // 2. Fetch Customers
+      if (step === 'all' || step === 'customers') {
+        console.log(`[${exactCompanyName}] Sincronizando Customers...`);
+        const customersUrl = `${customApiBaseUrl}/customers`;
       
       const allCustomersData = await fetchODataAllPages(customersUrl, accessToken);
       
@@ -217,11 +219,12 @@ export async function syncBusinessCentral(specificCompany?: string) {
       if (custUpdates.length > 0) {
         await chunkedUpdate(custUpdates, (u) => prisma.customer.update(u));
       }
+      } // End of customers step
 
       // 3. Fetch Customer Ledger Entries (Invoices/Recobros)
+      if (step === 'all' || step === 'invoices') {
       console.log(`[${exactCompanyName}] Sincronizando Customer Ledger Entries...`);
       try {
-        const customApiBaseUrl = `https://api.businesscentral.dynamics.com/v2.0/${config.tenantId}/${config.environment}/api/craze/integrations/v1.0/companies(${companyId})`;
         const ledgerUrl = `${customApiBaseUrl}/custLedgerEntries?$filter=(documentType eq 'Invoice' or documentType eq 'Credit Memo' or documentType eq 'Refund') and open eq true`;
         
         const allLedgerData = await fetchODataAllPages(ledgerUrl, accessToken);
@@ -422,8 +425,10 @@ export async function syncBusinessCentral(specificCompany?: string) {
           console.error(`[${exactCompanyName}] Fallback Cust_LedgerEntries also failed:`, error.message);
         }
       }
+      } // End of invoices step
 
       // 4. Fetch Vendors
+      if (step === 'all' || step === 'vendors') {
       console.log(`[${exactCompanyName}] Sincronizando Vendors...`);
       const vendorsUrl = `${baseUrl}${companySegment}/vendors`;
       const allVendorsData = await fetchODataAllPages(vendorsUrl, accessToken);
@@ -479,8 +484,10 @@ export async function syncBusinessCentral(specificCompany?: string) {
       if (venUpdates.length > 0) {
         await chunkedUpdate(venUpdates, (u) => prisma.vendor.update(u));
       }
+      } // End of vendors step
 
       // 5. Fetch Vendor Ledger Entries (Pagos a proveedores)
+      if (step === 'all' || step === 'vendorInvoices') {
       console.log(`[${exactCompanyName}] Sincronizando Vendor Ledger Entries...`);
       const vendorLedgerUrl = `${customApiBaseUrl}/vendorLedgerEntries?$filter=(documentType eq 'Invoice' or documentType eq 'Credit Memo') and open eq true`;
       
@@ -592,6 +599,7 @@ export async function syncBusinessCentral(specificCompany?: string) {
           data: { status: 'Closed' }
         });
       }
+      } // End of vendorInvoices step
       
     } catch (companyError) {
       console.error(`[${exactCompanyName}] Error during sync:`, companyError);
