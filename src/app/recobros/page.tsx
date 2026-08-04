@@ -278,22 +278,26 @@ export default function RecobrosPage() {
       // Load html2pdf dynamically
       const html2pdf = (await import('html2pdf.js' as any)).default;
       
-      const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = htmlContent;
-      tempDiv.style.position = 'absolute';
-      tempDiv.style.left = '-9999px';
-      tempDiv.style.top = '-9999px';
-      document.body.appendChild(tempDiv);
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'absolute';
+      iframe.style.width = '800px';
+      iframe.style.height = '1000px';
+      iframe.style.left = '-9999px';
+      document.body.appendChild(iframe);
+      
+      iframe.contentDocument!.open();
+      iframe.contentDocument!.write(htmlContent);
+      iframe.contentDocument!.close();
       
       const pdfBase64 = await html2pdf().set({
         margin: [10, 10, 10, 10],
         filename: 'Facturas_Vencidas.pdf',
         image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
+        html2canvas: { scale: 2, useCORS: true, logging: false },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-      }).from(tempDiv).output('datauristring');
+      }).from(iframe.contentDocument!.body).outputPdf('datauristring');
       
-      document.body.removeChild(tempDiv);
+      document.body.removeChild(iframe);
 
       const res = await fetch('/api/send-email', {
         method: 'POST',
@@ -341,22 +345,26 @@ export default function RecobrosPage() {
       // Load html2pdf dynamically
       const html2pdf = (await import('html2pdf.js' as any)).default;
       
-      const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = htmlContent;
-      tempDiv.style.position = 'absolute';
-      tempDiv.style.left = '-9999px';
-      tempDiv.style.top = '-9999px';
-      document.body.appendChild(tempDiv);
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'absolute';
+      iframe.style.width = '800px';
+      iframe.style.height = '1000px';
+      iframe.style.left = '-9999px';
+      document.body.appendChild(iframe);
+      
+      iframe.contentDocument!.open();
+      iframe.contentDocument!.write(htmlContent);
+      iframe.contentDocument!.close();
       
       const pdfBase64 = await html2pdf().set({
         margin: [10, 10, 10, 10],
         filename: 'Facturas_Vencidas.pdf',
         image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
+        html2canvas: { scale: 2, useCORS: true, logging: false },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-      }).from(tempDiv).output('datauristring');
+      }).from(iframe.contentDocument!.body).outputPdf('datauristring');
       
-      document.body.removeChild(tempDiv);
+      document.body.removeChild(iframe);
 
       const res = await fetch('/api/send-salesperson-email', {
         method: 'POST',
