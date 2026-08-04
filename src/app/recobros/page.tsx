@@ -275,9 +275,7 @@ export default function RecobrosPage() {
       const previewRes = await fetch(`/api/preview-report?customerId=${emailDraft.customerId}&invoices=${emailDraft.invoices.map((i: any) => i.id).join(',')}&message=${encodeURIComponent(emailDraft.message)}`);
       const htmlContent = await previewRes.text();
       
-      // Load html2pdf dynamically
-      const html2pdf = (await import('html2pdf.js' as any)).default;
-      
+      // Run html2pdf inside an isolated iframe to prevent html2canvas from parsing Tailwind v4 CSS
       const iframe = document.createElement('iframe');
       iframe.style.position = 'absolute';
       iframe.style.width = '800px';
@@ -285,17 +283,41 @@ export default function RecobrosPage() {
       iframe.style.left = '-9999px';
       document.body.appendChild(iframe);
       
-      iframe.contentDocument!.open();
-      iframe.contentDocument!.write(htmlContent);
-      iframe.contentDocument!.close();
-      
-      const pdfBase64 = await html2pdf().set({
-        margin: [10, 10, 10, 10],
-        filename: 'Facturas_Vencidas.pdf',
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, logging: false },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-      }).from(iframe.contentDocument!.body).outputPdf('datauristring');
+      const pdfBase64 = await new Promise<string>((resolve, reject) => {
+        iframe.onload = async () => {
+          try {
+            const win = iframe.contentWindow as any;
+            // Wait for html2pdf to be loaded in the iframe just in case
+            if (!win.html2pdf) {
+              await new Promise(r => setTimeout(r, 500));
+            }
+            const pdfStr = await win.html2pdf().set({
+              margin: [10, 10, 10, 10],
+              filename: 'Facturas.pdf',
+              image: { type: 'jpeg', quality: 0.98 },
+              html2canvas: { scale: 2, useCORS: true, logging: false },
+              jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            }).from(win.document.getElementById('pdf-content')).outputPdf('datauristring');
+            resolve(pdfStr);
+          } catch (err) {
+            reject(err);
+          }
+        };
+
+        iframe.contentDocument!.open();
+        iframe.contentDocument!.write(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+            </head>
+            <body>
+              <div id="pdf-content">${htmlContent}</div>
+            </body>
+          </html>
+        `);
+        iframe.contentDocument!.close();
+      });
       
       document.body.removeChild(iframe);
 
@@ -342,9 +364,7 @@ export default function RecobrosPage() {
       const previewRes = await fetch(`/api/preview-report?customerId=${spEmailDraft.customerId}&invoices=${spEmailDraft.invoices.map((i: any) => i.id).join(',')}&message=${encodeURIComponent(spEmailDraft.message)}`);
       const htmlContent = await previewRes.text();
       
-      // Load html2pdf dynamically
-      const html2pdf = (await import('html2pdf.js' as any)).default;
-      
+      // Run html2pdf inside an isolated iframe to prevent html2canvas from parsing Tailwind v4 CSS
       const iframe = document.createElement('iframe');
       iframe.style.position = 'absolute';
       iframe.style.width = '800px';
@@ -352,17 +372,41 @@ export default function RecobrosPage() {
       iframe.style.left = '-9999px';
       document.body.appendChild(iframe);
       
-      iframe.contentDocument!.open();
-      iframe.contentDocument!.write(htmlContent);
-      iframe.contentDocument!.close();
-      
-      const pdfBase64 = await html2pdf().set({
-        margin: [10, 10, 10, 10],
-        filename: 'Facturas_Vencidas.pdf',
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, logging: false },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-      }).from(iframe.contentDocument!.body).outputPdf('datauristring');
+      const pdfBase64 = await new Promise<string>((resolve, reject) => {
+        iframe.onload = async () => {
+          try {
+            const win = iframe.contentWindow as any;
+            // Wait for html2pdf to be loaded in the iframe just in case
+            if (!win.html2pdf) {
+              await new Promise(r => setTimeout(r, 500));
+            }
+            const pdfStr = await win.html2pdf().set({
+              margin: [10, 10, 10, 10],
+              filename: 'Facturas.pdf',
+              image: { type: 'jpeg', quality: 0.98 },
+              html2canvas: { scale: 2, useCORS: true, logging: false },
+              jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            }).from(win.document.getElementById('pdf-content')).outputPdf('datauristring');
+            resolve(pdfStr);
+          } catch (err) {
+            reject(err);
+          }
+        };
+
+        iframe.contentDocument!.open();
+        iframe.contentDocument!.write(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+            </head>
+            <body>
+              <div id="pdf-content">${htmlContent}</div>
+            </body>
+          </html>
+        `);
+        iframe.contentDocument!.close();
+      });
       
       document.body.removeChild(iframe);
 
