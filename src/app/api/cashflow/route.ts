@@ -12,10 +12,13 @@ export async function GET(req: Request) {
     const companyId = cookieStore.get('craze_selected_company')?.value || 'CRAZE';
     const { searchParams } = new URL(req.url);
     const showArchived = searchParams.get('archived') === 'true';
+    const currency = searchParams.get('currency') || 'EUR';
 
     // 1. Initial balance
-    const config = await prisma.cashflowConfig.findUnique({ where: { companyId } });
-    const INITIAL_BALANCE = config ? config.initialBalance : 58547.56;
+    const config = await prisma.cashflowConfig.findUnique({ 
+      where: { companyId_currencyCode: { companyId, currencyCode: currency } } 
+    });
+    const INITIAL_BALANCE = config ? config.initialBalance : 0;
 
     // 2. Fetch Markant invoices (Grouped by confirmedPaymentDate)
     const markantInvoices = await prisma.invoice.findMany({
@@ -23,7 +26,9 @@ export async function GET(req: Request) {
         companyId,
         paymentMethod: 'MARKANT',
         status: { not: 'Closed' },
-        isArchived: showArchived
+        isArchived: showArchived,
+        confirmedPaymentDate: { not: null },
+        currencyCode: currency
       }
     });
 
@@ -53,7 +58,8 @@ export async function GET(req: Request) {
         companyId,
         paymentMethod: 'TRANSFER',
         status: { not: 'Closed' },
-        isArchived: showArchived
+        isArchived: showArchived,
+        currencyCode: currency
       },
       include: { customer: true }
     });
@@ -83,7 +89,7 @@ export async function GET(req: Request) {
 
     // 4. Fetch Manual Entries
     const manualEntriesFromDb = await prisma.cashflowManualEntry.findMany({
-      where: { companyId, isArchived: showArchived }
+      where: { companyId, currencyCode: currency, isArchived: showArchived }
     });
     const manualEntries = manualEntriesFromDb.map(entry => ({
       id: `manual-${entry.id}`,
@@ -131,24 +137,22 @@ export async function POST(req: Request) {
     const cookieStore = await cookies();
     const companyId = cookieStore.get('craze_selected_company')?.value || 'CRAZE';
     const body = await req.json();
-    
-    // Si envían un array (Bulk import desde Excel)
+
     if (Array.isArray(body)) {
-      const dataToInsert = body.map((item: any) => ({
+      const currency = body[0]?.currency || 'EUR';
+      // It's an import from Excel
+      const manualEntries = body.map(row => ({
         companyId,
-        date: new Date(item.date),
-        description: item.description,
-        amount: parseFloat(item.amount)
+        currencyCode: currency,
+        date: new Date(row.date),
+        description: row.description,
+        amount: parseFloat(row.amount)
       }));
-      
-      const created = await prisma.cashflowManualEntry.createMany({
-        data: dataToInsert
-      });
-      return NextResponse.json({ success: true, count: created.count });
+      await prisma.cashflowManualEntry.createMany({ data: manualEntries });
+      return NextResponse.json({ success: true, count: manualEntries.length });
     }
 
-    // Si envían un solo objeto
-    const { date, description, amount } = body;
+    const { date, description, amount, currency } = body;
     if (!date || !description || amount === undefined) {
       return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
     }
@@ -156,6 +160,7 @@ export async function POST(req: Request) {
     const entry = await prisma.cashflowManualEntry.create({
       data: {
         companyId,
+        currencyCode: currency || 'EUR',
         date: new Date(date),
         description,
         amount: parseFloat(amount)
@@ -175,6 +180,16 @@ export async function PUT(req: Request) {
     const companyId = cookieStore.get('craze_selected_company')?.value || 'CRAZE';
     const body = await req.json();
     const { id, type, action, date, description, amount, invoiceIds, isArchived } = body;
+
+    if (type === 'config') {
+      const currencyCode = body.currency || 'EUR';
+      await prisma.cashflowConfig.upsert({
+        where: { companyId_currencyCode: { companyId, currencyCode } },
+        update: { initialBalance: parseFloat(amount) },
+        create: { companyId, currencyCode, initialBalance: parseFloat(amount) }
+      });
+      return NextResponse.json({ success: true });
+    }
     
     // Si la acción es 'archive', archivamos/desarchivamos
     if (action === 'archive') {
@@ -194,16 +209,6 @@ export async function PUT(req: Request) {
         });
         return NextResponse.json({ success: true });
       }
-    }
-
-    // Si type = 'config', actualizamos el balance inicial
-    if (type === 'config') {
-      const config = await prisma.cashflowConfig.upsert({
-        where: { companyId },
-        update: { initialBalance: parseFloat(amount) },
-        create: { companyId, initialBalance: parseFloat(amount) }
-      });
-      return NextResponse.json(config);
     }
 
     // Si type = 'invoice-date', actualizamos el cashflowDate de una o varias facturas
