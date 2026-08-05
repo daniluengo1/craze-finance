@@ -27,11 +27,11 @@ export default function Dashboard() {
     fetchKpis();
   }, []);
 
-  const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(val || 0);
+  const formatCurrency = (val: number, currencyCode: string = 'EUR') => {
+    return new Intl.NumberFormat('es-ES', { style: 'currency', currency: currencyCode }).format(val || 0);
   };
 
-  const KPICard = ({ title, value, icon, trend, link }: any) => (
+  const KPICard = ({ title, value, icon, trend, link, currency }: any) => (
     <div className="bg-white border border-gray-200 p-6 rounded-xl shadow-sm hover:shadow-md hover:border-gray-300 transition-all group">
       <div className="flex justify-between items-start mb-4">
         <div className="p-3 bg-gray-50 rounded-lg text-gray-700">
@@ -45,7 +45,7 @@ export default function Dashboard() {
       </div>
       <div>
         <p className="text-xs text-gray-500 font-bold mb-1 uppercase tracking-wider">{title}</p>
-        <h3 className="text-2xl font-black text-black tracking-tight">{formatCurrency(value)}</h3>
+        <h3 className="text-2xl font-black text-black tracking-tight">{formatCurrency(value, currency || 'EUR')}</h3>
         {trend && (
           <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
             {trend}
@@ -213,6 +213,7 @@ export default function Dashboard() {
                     title={`Disponible ${currency}`} 
                     value={kpis.cashflowAvailable[currency]} 
                     icon={<Wallet size={24} />} 
+                    currency={currency}
                   />
                 ))}
                 {(!kpis?.cashflowAvailable || Object.keys(kpis.cashflowAvailable).length === 0) && (
