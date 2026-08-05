@@ -4,6 +4,7 @@ const prisma = new PrismaClient();
 
 async function run() {
   const config = await prisma.businessCentralConfig.findUnique({ where: { id: 1 } });
+  if (!config) throw new Error("Config not found");
   
   const tokenUrl = `https://login.microsoftonline.com/${config.tenantId}/oauth2/v2.0/token`;
   const params = new URLSearchParams();

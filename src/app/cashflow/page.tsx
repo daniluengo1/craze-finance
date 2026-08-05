@@ -2,8 +2,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Plus, Edit2, Trash2, RefreshCw, AlertCircle, Save, X, ChevronRight, ChevronDown, Download, Upload, Archive, Send, Briefcase } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { useCompany } from '@/contexts/CompanyContext';
 
 export default function CashflowPage() {
+  const { selectedCompany } = useCompany();
+  const availableCurrencies = selectedCompany === 'Craze UK' ? ['EUR', 'USD', 'GBP'] : ['EUR', 'USD', 'CHF'];
+
   const [entries, setEntries] = useState<any[]>([]);
   const [initialBalance, setInitialBalance] = useState<number>(0);
   const [loading, setLoading] = useState(true);
@@ -20,6 +24,19 @@ export default function CashflowPage() {
   const [showArchived, setShowArchived] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [draggedItem, setDraggedItem] = useState<any>(null);
+  
+  const getCurrencySymbol = (curr: string) => {
+    switch (curr) {
+      case 'USD': return '$';
+      case 'GBP': return '£';
+      case 'CHF': return 'CHF';
+      case 'EUR': default: return '€';
+    }
+  };
+
+  const [allBalances, setAllBalances] = useState<Record<string, number>>({});
+  const [totalEurSum, setTotalEurSum] = useState<number | null>(null);
+
   
   // Email states
   const [selectedInvoices, setSelectedInvoices] = useState<Record<number, boolean>>({});
@@ -53,6 +70,29 @@ export default function CashflowPage() {
         const data = await res.json();
         setEntries(data.entries || []);
         setInitialBalance(data.initialBalance || 0);
+      }
+      
+      // Fetch all balances and exchange rates
+      const [balRes, rateRes] = await Promise.all([
+        fetch('/api/cashflow/balances'),
+        fetch('https://api.exchangerate-api.com/v4/latest/EUR')
+      ]);
+      
+      if (balRes.ok) {
+        const balances = await balRes.json();
+        setAllBalances(balances);
+        
+        if (rateRes.ok) {
+          const ratesData = await rateRes.json();
+          const rates = ratesData.rates;
+          
+          let totalEur = balances['EUR'] || 0;
+          if (balances['USD'] && rates['USD']) totalEur += balances['USD'] / rates['USD'];
+          if (balances['CHF'] && rates['CHF']) totalEur += balances['CHF'] / rates['CHF'];
+          if (balances['GBP'] && rates['GBP']) totalEur += balances['GBP'] / rates['GBP'];
+          
+          setTotalEurSum(totalEur);
+        }
       }
     } catch (error) {
       console.error('Failed to fetch cashflow:', error);
@@ -495,21 +535,35 @@ export default function CashflowPage() {
           </div>
         </div>
 
-        {/* Currency Tabs */}
-        <div className="flex gap-2 mb-6">
-          {['EUR', 'USD', 'CHF'].map(curr => (
-            <button
-              key={curr}
-              onClick={() => setCurrentCurrency(curr)}
-              className={`px-6 py-2 rounded-lg font-bold transition-all border ${
-                currentCurrency === curr 
-                  ? 'bg-black text-white border-black shadow-lg' 
-                  : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
-              }`}
-            >
-              Cuenta {curr}
-            </button>
-          ))}
+        {/* Currency Tabs & Total */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+          <div className="flex gap-2">
+            {availableCurrencies.map(curr => (
+              <button
+                key={curr}
+                onClick={() => setCurrentCurrency(curr)}
+                className={`px-6 py-2 rounded-lg font-bold transition-all border ${
+                  currentCurrency === curr 
+                    ? 'bg-black text-white border-black shadow-lg' 
+                    : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                Cuenta {curr}
+                {allBalances[curr] !== undefined && (
+                  <span className={`ml-2 px-2 py-0.5 rounded text-xs font-black ${currentCurrency === curr ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-700'}`}>
+                    {getCurrencySymbol(curr)}{allBalances[curr].toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+          
+          {totalEurSum !== null && (
+            <div className="bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 rounded-lg flex items-center gap-2">
+              <span className="text-emerald-800 font-bold text-sm uppercase tracking-wider">Saldo Total (Eq. EUR)</span>
+              <span className="text-emerald-700 font-black text-lg">€{totalEurSum.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </div>
+          )}
         </div>
 
         <div className="rounded-2xl border border-gray-200 bg-gray-50 backdrop-blur-md shadow-2xl overflow-hidden">
@@ -558,7 +612,7 @@ export default function CashflowPage() {
                         </div>
                       ) : (
                         <>
-                          €{initialBalance.toLocaleString('es-ES', { minimumFractionDigits: 2 })}
+                          {getCurrencySymbol(currentCurrency)}{initialBalance.toLocaleString('es-ES', { minimumFractionDigits: 2 })}
                           <button onClick={() => { setIsEditingBalance(true); setNewBalance(initialBalance.toString()); }} className="opacity-0 group-hover:opacity-100 p-1 text-black hover:bg-blue-400/20 rounded transition-all"><Edit2 size={12}/></button>
                         </>
                       )}
@@ -621,12 +675,12 @@ export default function CashflowPage() {
                           </td>
                           <td className="p-4 text-right font-medium">
                             <span className={entry.amount > 0 ? "text-emerald-600 font-bold" : entry.amount < 0 ? "text-red-600 font-bold" : "text-gray-700 font-semibold font-bold"}>
-                              {entry.amount > 0 ? '+' : ''}€{entry.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })}
+                              {entry.amount > 0 ? '+' : ''}{getCurrencySymbol(currentCurrency)}{entry.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })}
                             </span>
                           </td>
                           <td className="p-4 text-right">
                             <span className={entry.balance <= -1000000 ? 'text-purple-600 font-black text-lg' : entry.balance < 0 ? 'text-red-600 font-bold text-base' : 'text-emerald-600 font-bold text-base'}>
-                              €{entry.balance.toLocaleString('es-ES', { minimumFractionDigits: 2 })}
+                              {getCurrencySymbol(currentCurrency)}{entry.balance.toLocaleString('es-ES', { minimumFractionDigits: 2 })}
                             </span>
                           </td>
                           <td className="p-4 text-center">
