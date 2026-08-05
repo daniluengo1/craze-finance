@@ -10,6 +10,42 @@ export async function GET() {
     const companyId = cookieStore.get('craze_selected_company')?.value || 'CRAZE';
     const today = new Date();
     
+    // -- CASHFLOW AVAILABLE CALCULATION --
+    const cashflowConfigs = await prisma.cashflowConfig.findMany({ where: { companyId } });
+    
+    const cashflowAvailable: Record<string, number> = {};
+    for (const conf of cashflowConfigs) {
+      cashflowAvailable[conf.currencyCode] = conf.initialBalance;
+    }
+
+    // Manual Entries up to today
+    const manualEntries = await prisma.cashflowManualEntry.findMany({
+      where: { companyId, isArchived: false, date: { lte: today } }
+    });
+    for (const entry of manualEntries) {
+      const c = entry.currencyCode || 'EUR';
+      cashflowAvailable[c] = (cashflowAvailable[c] || 0) + entry.amount;
+    }
+
+    // Auto Invoices up to today (Markant and Transfer)
+    const autoInvoices = await prisma.invoice.findMany({
+      where: { 
+        companyId, 
+        isArchived: false, 
+        status: { not: 'Closed' },
+        paymentMethod: { in: ['MARKANT', 'TRANSFER'] }
+      }
+    });
+    for (const inv of autoInvoices) {
+      const activeDate = inv.cashflowDate || inv.confirmedPaymentDate || inv.dueDate;
+      if (activeDate <= today) {
+        if (inv.paymentMethod === 'MARKANT' && !inv.confirmedPaymentDate) continue; // Skip unconfirmed markant
+        const c = inv.currencyCode || 'EUR';
+        cashflowAvailable[c] = (cashflowAvailable[c] || 0) + inv.amount;
+      }
+    }
+    // -- END CASHFLOW CALCULATION --
+
     // 1. CARTERA CLIENTES (Cobros)
     const openInvoices = await prisma.invoice.findMany({
       where: {
@@ -134,8 +170,8 @@ export async function GET() {
       totalRefundsAbiertoProveedor: totalRefundsProveedor,
       salesReturnOrdersAbiertas: 0, // Placeholder
 
-      // Cashflow
-      cashflow: 0 // Placeholder
+      // Cashflow (Total per currency)
+      cashflowAvailable
     });
 
   } catch (error: any) {
