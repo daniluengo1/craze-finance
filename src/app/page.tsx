@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { 
   Banknote, AlertCircle, TrendingDown, ArrowUpRight, 
   ArrowDownRight, CheckCircle2, Clock, Globe2, 
-  ShoppingCart, Landmark, Wallet, Undo2
+  ShoppingCart, Landmark, Wallet, Undo2, PackageSearch
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -222,6 +222,45 @@ export default function Dashboard() {
                     icon={<Wallet size={24} />} 
                   />
                 )}
+              </div>
+            </div>
+
+            {/* INVENTORY VALUATION */}
+            <div>
+              <div className="flex items-center justify-between mb-4 border-b border-gray-200 pb-2">
+                <h2 className="text-xl font-bold text-black flex items-center gap-2">
+                  <PackageSearch className="text-gray-700" /> 
+                  Inventario (Coste Medio)
+                </h2>
+                {kpis?.latestValuation && (
+                  <span className="text-sm text-gray-500 font-medium">
+                    Último cierre: {new Date(kpis.latestValuation.month).toLocaleDateString(undefined, {month: 'long', year: 'numeric'})}
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <KPICard 
+                  title="Valoración Sistema (BC)" 
+                  value={kpis?.latestValuation?.totalSystemVal || 0} 
+                  icon={<PackageSearch size={24} />} 
+                />
+                <KPICard 
+                  title="Valoración Coste Medio" 
+                  value={kpis?.latestValuation?.totalNewVal || 0} 
+                  icon={<ShoppingCart size={24} />} 
+                />
+                <div className={`p-6 rounded-xl border flex flex-col justify-between shadow-sm transition-all hover:shadow-md ${kpis?.latestValuation?.difference > 0 ? 'bg-green-50 border-green-200' : kpis?.latestValuation?.difference < 0 ? 'bg-red-50 border-red-200' : 'bg-white border-gray-100'}`}>
+                  <div className="flex justify-between items-start mb-4">
+                    <p className="text-sm font-semibold text-gray-600 uppercase tracking-wider">Diferencia Total</p>
+                    <div className="p-2 rounded-lg bg-gray-50/50">
+                      <TrendingDown size={24} className={kpis?.latestValuation?.difference > 0 ? "text-green-600" : "text-red-600"} />
+                    </div>
+                  </div>
+                  <h3 className={`text-3xl font-black ${kpis?.latestValuation?.difference > 0 ? 'text-green-700' : kpis?.latestValuation?.difference < 0 ? 'text-red-700' : 'text-gray-900'}`}>
+                    {kpis?.latestValuation?.difference > 0 ? '+' : ''}
+                    {kpis?.latestValuation ? `€${kpis.latestValuation.difference.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '€0.00'}
+                  </h3>
+                </div>
               </div>
             </div>
 
