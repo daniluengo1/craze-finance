@@ -8,8 +8,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model Customer {
@@ -72,8 +73,12 @@ model ApiConfig {
 }
 
 model CashflowConfig {
-  companyId      String @id @default("CRAZE")
-  initialBalance Float  @default(58547.56)
+  id             Int    @id @default(autoincrement())
+  companyId      String @default("CRAZE")
+  currencyCode   String @default("EUR")
+  initialBalance Float  @default(0)
+  
+  @@unique([companyId, currencyCode])
 }
 
 model EmailConfig {
@@ -149,14 +154,15 @@ model ApprovalEntry {
 }
 
 model CashflowManualEntry {
-  id          Int      @id @default(autoincrement())
-  companyId   String   @default("CRAZE")
-  date        DateTime
-  description String
-  amount      Float
-  isArchived  Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           Int      @id @default(autoincrement())
+  companyId    String   @default("CRAZE")
+  currencyCode String   @default("EUR")
+  date         DateTime
+  description  String
+  amount       Float
+  isArchived   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 model User {
