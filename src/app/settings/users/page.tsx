@@ -11,6 +11,7 @@ const MODULES = [
   { id: 'pagos', label: 'Pagos a Prov.' },
   { id: 'cashflow', label: 'Cashflow' },
   { id: 'auditoria', label: 'Auditoría (Registro de Actividad)' },
+  { id: 'inventario', label: 'Inventario (Cierre)' },
   { id: 'configuracion', label: 'Configuración y Usuarios' },
 ];
 
