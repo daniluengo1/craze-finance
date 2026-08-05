@@ -10,6 +10,7 @@ export default function CashflowPage() {
   const [syncing, setSyncing] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const [currentCurrency, setCurrentCurrency] = useState('EUR');
   
   const [formData, setFormData] = useState({ id: '', type: '', date: '', description: '', amount: '', invoiceIds: [] as number[] });
   const [isEditing, setIsEditing] = useState(false);
@@ -18,6 +19,7 @@ export default function CashflowPage() {
   const [filterType, setFilterType] = useState<'ALL' | 'AUTO' | 'MANUAL'>('ALL');
   const [showArchived, setShowArchived] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [draggedItem, setDraggedItem] = useState<any>(null);
   
   // Email states
   const [selectedInvoices, setSelectedInvoices] = useState<Record<number, boolean>>({});
@@ -46,7 +48,7 @@ export default function CashflowPage() {
   const fetchCashflow = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`/api/cashflow${showArchived ? '?archived=true' : ''}`);
+      const res = await fetch(`/api/cashflow?currency=${currentCurrency}${showArchived ? '&archived=true' : ''}`);
       if (res.ok) {
         const data = await res.json();
         setEntries(data.entries || []);
@@ -61,7 +63,7 @@ export default function CashflowPage() {
 
   useEffect(() => {
     fetchCashflow();
-  }, [showArchived]);
+  }, [showArchived, currentCurrency]);
 
   const handleSync = async () => {
     try {
@@ -117,7 +119,7 @@ export default function CashflowPage() {
       await fetch('/api/cashflow', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'config', amount: newBalance })
+        body: JSON.stringify({ type: 'config', amount: newBalance, currency: currentCurrency })
       });
       setIsEditingBalance(false);
       fetchCashflow();
@@ -178,6 +180,42 @@ export default function CashflowPage() {
       fetchCashflow();
     } catch(e) {
       console.error(e);
+    }
+  };
+
+  const handleDragStart = (e: React.DragEvent, entry: any) => {
+    setDraggedItem(entry);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', entry.id);
+  };
+
+  const handleDrop = async (e: React.DragEvent, targetEntry: any) => {
+    e.preventDefault();
+    if (!draggedItem || draggedItem.id === targetEntry.id) return;
+    
+    const confirmMsg = `¿Mover "${draggedItem.description}" a la fecha de "${targetEntry.description}" (${new Date(targetEntry.date).toLocaleDateString('es-ES')})?`;
+    if (!confirm(confirmMsg)) return;
+
+    try {
+      const payload = {
+        type: draggedItem.isManual ? 'manual' : 'invoice-date',
+        id: draggedItem.isManual ? draggedItem.dbId : undefined,
+        invoiceIds: draggedItem.isManual ? undefined : (draggedItem.invoices ? draggedItem.invoices.map((i:any)=>i.id) : [draggedItem.id]),
+        date: new Date(targetEntry.date).toISOString().split('T')[0],
+        amount: draggedItem.amount,
+        description: draggedItem.description
+      };
+      
+      await fetch('/api/cashflow', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      fetchCashflow();
+    } catch(error) {
+      console.error('Error in drag and drop:', error);
+    } finally {
+      setDraggedItem(null);
     }
   };
 
@@ -332,14 +370,16 @@ export default function CashflowPage() {
           return;
         }
 
+        const entriesWithCurrency = newEntries.map(e => ({ ...e, currency: currentCurrency }));
+
         setSyncing(true);
         await fetch('/api/cashflow', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newEntries)
+          body: JSON.stringify(entriesWithCurrency)
         });
         
-        alert(`¡Se han importado ${newEntries.length} registros!`);
+        alert(`¡Se han importado ${newEntries.length} registros en la cuenta ${currentCurrency}!`);
         fetchCashflow();
       } catch (err) {
         console.error('Failed to import Excel:', err);
@@ -354,18 +394,30 @@ export default function CashflowPage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Parse formula for amount (e.g., 100+50)
+    let parsedAmount = formData.amount;
     try {
+      if (/^[0-9+\-*/().\s]+$/.test(parsedAmount)) {
+        parsedAmount = Function(`'use strict'; return (${parsedAmount})`)().toString();
+      }
+    } catch(err) {
+      console.warn("Invalid math expression", err);
+    }
+
+    try {
+      const payload = { ...formData, amount: parsedAmount, currency: currentCurrency };
       if (isEditing) {
         await fetch('/api/cashflow', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData)
+          body: JSON.stringify(payload)
         });
       } else {
         await fetch('/api/cashflow', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData)
+          body: JSON.stringify(payload)
         });
       }
       setIsModalOpen(false);
@@ -376,8 +428,8 @@ export default function CashflowPage() {
   };
 
   return (
-    <div className="flex-1 p-8 max-w-[1600px] overflow-hidden">
-        <div className="flex justify-between items-center mb-8">
+    <div className="flex-1 p-8 max-w-[1600px] mx-auto overflow-hidden">
+        <div className="flex justify-between items-center mb-8 sticky top-0 z-10 bg-gray-50/95 backdrop-blur-md pb-4 pt-6 -mt-6 border-b border-gray-200">
           <div>
             <h1 className="text-4xl font-black text-black mb-2">
               Previsión de Tesorería (Cashflow)
@@ -443,6 +495,23 @@ export default function CashflowPage() {
           </div>
         </div>
 
+        {/* Currency Tabs */}
+        <div className="flex gap-2 mb-6">
+          {['EUR', 'USD', 'CHF'].map(curr => (
+            <button
+              key={curr}
+              onClick={() => setCurrentCurrency(curr)}
+              className={`px-6 py-2 rounded-lg font-bold transition-all border ${
+                currentCurrency === curr 
+                  ? 'bg-black text-white border-black shadow-lg' 
+                  : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              Cuenta {curr}
+            </button>
+          ))}
+        </div>
+
         <div className="rounded-2xl border border-gray-200 bg-gray-50 backdrop-blur-md shadow-2xl overflow-hidden">
           {loading ? (
             <div className="flex justify-center items-center h-64">
@@ -506,19 +575,30 @@ export default function CashflowPage() {
                       .filter(e => filterType === 'ALL' || (filterType === 'AUTO' && !e.isManual) || (filterType === 'MANUAL' && e.isManual))
                       .map((entry, idx) => (
                       <React.Fragment key={entry.id}>
-                        <tr className="hover:bg-gray-50 transition-colors group cursor-pointer" onClick={() => entry.isGroup && toggleGroup(entry.id)}>
-                          <td className="p-4 text-center" onClick={e => e.stopPropagation()}>
-                            {entry.isManual ? (
-                              <input 
-                                type="checkbox"
+                        <tr 
+                          draggable={true}
+                          onDragStart={(e) => handleDragStart(e, entry)}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => handleDrop(e, entry)}
+                          className={`hover:bg-gray-50 transition-colors group cursor-pointer ${draggedItem?.id === entry.id ? 'opacity-50' : ''}`}
+                          onClick={() => entry.isGroup && toggleGroup(entry.id)}
+                        >
+                          <td className="p-4 text-center cursor-move" title="Arrastrar para mover">
+                            <div className="flex items-center justify-center gap-2">
+                              <span className="text-gray-400 cursor-move">⋮⋮</span>
+                              {entry.isManual ? (
+                                <input 
+                                  type="checkbox"
                                 className="rounded border-gray-300 bg-white text-blue-500 focus:ring-blue-500"
                                 checked={selectedIds.includes(entry.dbId)}
                                 onChange={(e) => {
                                   if (e.target.checked) setSelectedIds([...selectedIds, entry.dbId]);
                                   else setSelectedIds(selectedIds.filter(id => id !== entry.dbId));
                                 }}
+                                onClick={e => e.stopPropagation()}
                               />
                             ) : null}
+                            </div>
                           </td>
                           <td className="p-4 font-medium text-gray-600">
                             {new Date(entry.date).toLocaleDateString('es-ES')}
@@ -656,11 +736,10 @@ export default function CashflowPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-900 font-bold mb-1">Importe (€)</label>
                   <input 
-                    type="number" 
-                    step="0.01"
+                    type="text" 
                     required
                     disabled={formData.type === 'invoice-date'}
-                    placeholder="Ej. -1500.50 (negativo para pagos)"
+                    placeholder="Ej. -1500 o 200+500"
                     value={formData.amount}
                     onChange={e => setFormData({...formData, amount: e.target.value})}
                     className="w-full bg-white border border-gray-200 rounded-lg px-4 py-2.5 text-gray-900 focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all disabled:opacity-50"
@@ -700,6 +779,15 @@ export default function CashflowPage() {
                 </button>
               </div>
               <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-900 font-bold mb-1">Para (Email del Cliente)</label>
+                  <input 
+                    type="email" 
+                    value={emailDraft.to}
+                    onChange={e => setEmailDraft({...emailDraft, to: e.target.value})}
+                    className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                  />
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-900 font-bold mb-1">Asunto</label>
                   <input 
