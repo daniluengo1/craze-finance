@@ -149,9 +149,9 @@ export async function syncBusinessCentral(specificCompany?: string, step: 'custo
 
     // Ensure CashflowConfig exists for this company
     await prisma.cashflowConfig.upsert({
-      where: { companyId: exactCompanyName },
+      where: { companyId_currencyCode: { companyId: exactCompanyName, currencyCode: 'EUR' } },
       update: {},
-      create: { companyId: exactCompanyName }
+      create: { companyId: exactCompanyName, currencyCode: 'EUR' }
     });
 
     try {
