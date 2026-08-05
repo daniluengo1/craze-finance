@@ -1,4 +1,5 @@
 import prisma from '@/lib/prisma';
+import salespeopleMapData from '@/lib/salespeopleMap.json';
 
 // Helper to get OAuth token via Entra ID for Business Central
 async function getAccessToken(tenantId: string, clientId: string, clientSecret: string) {
@@ -113,24 +114,9 @@ export async function syncBusinessCentral(specificCompany?: string, step: 'custo
     purchaseInvoices: 0
   };
 
-  const salespeopleMap = new Map<string, string>();
-  try {
-    const excelPath = require('path').join(process.cwd(), 'Salespeople_Purchasers.xlsx');
-    const xlsx = require('xlsx');
-    if (require('fs').existsSync(excelPath)) {
-      const wb = xlsx.readFile(excelPath);
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const data = xlsx.utils.sheet_to_json(ws) as any[];
-      for (const row of data) {
-        if (row.Code !== undefined && row.Name !== undefined) {
-          salespeopleMap.set(row.Code.toString(), row.Name.toString());
-        }
-      }
-      console.log(`[bcSync] Loaded ${salespeopleMap.size} salespeople mappings from Excel.`);
-    }
-  } catch (e) {
-    console.warn('[bcSync] Could not load Salespeople Excel:', e);
-  }
+  const salespeopleMap = new Map<string, string>(
+    Object.entries(salespeopleMapData)
+  );
 
   for (const companyName of targetCompanyNames) {
     console.log(`\n--- Sincronizando empresa: ${companyName} ---`);
