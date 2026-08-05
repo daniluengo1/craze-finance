@@ -204,15 +204,24 @@ export default function Dashboard() {
             <div>
               <h2 className="text-xl font-bold text-black mb-4 flex items-center gap-2 border-b border-gray-200 pb-2">
                 <Landmark className="text-gray-700" /> 
-                Tesorería
+                Tesorería (Disponible Hoy)
               </h2>
-              <div className="grid grid-cols-1 md:grid-cols-1 lg:max-w-sm">
-                <KPICard 
-                  title="Cashflow" 
-                  value={kpis?.cashflow} 
-                  icon={<Wallet size={24} />} 
-
-                />
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {kpis?.cashflowAvailable && Object.keys(kpis.cashflowAvailable).map(currency => (
+                  <KPICard 
+                    key={currency}
+                    title={`Disponible ${currency}`} 
+                    value={kpis.cashflowAvailable[currency]} 
+                    icon={<Wallet size={24} />} 
+                  />
+                ))}
+                {(!kpis?.cashflowAvailable || Object.keys(kpis.cashflowAvailable).length === 0) && (
+                  <KPICard 
+                    title="Cashflow" 
+                    value={0} 
+                    icon={<Wallet size={24} />} 
+                  />
+                )}
               </div>
             </div>
 
