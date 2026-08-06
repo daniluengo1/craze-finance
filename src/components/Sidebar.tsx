@@ -26,6 +26,7 @@ export default function Sidebar({ permissions = [], username = '' }: { permissio
     { href: '/pagos', label: 'Pagos a Prov.', module: 'pagos' },
     { href: '/cashflow', label: 'Cashflow', module: 'cashflow' },
     { href: '/inventario', label: 'Inventario (Cierre)', module: 'inventario' },
+    { href: '/bwa', label: 'BWA Analytics', module: 'bwa' },
     { href: '/settings/users', label: 'Usuarios', module: 'admin' },
     { href: '/settings/logs', label: 'Auditoría', module: 'auditoria' },
     { href: '/settings', label: 'Configuración', module: 'configuracion' },

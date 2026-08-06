@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import prisma from '@/lib/prisma';
+import salespeopleMapData from '@/lib/salespeopleMap.json';
 
 export async function GET() {
   try {
@@ -23,12 +24,24 @@ export async function GET() {
       orderBy: { dueDate: 'asc' }
     });
 
+    const salespeopleMap = new Map<string, string>(Object.entries(salespeopleMapData));
+
     const enrichedInvoices = openInvoices.map(invoice => {
       const isOverdue = invoice.dueDate < today;
       let daysOverdue = 0;
       if (isOverdue) {
         const diffTime = Math.abs(today.getTime() - invoice.dueDate.getTime());
         daysOverdue = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      }
+
+      if (invoice.customer) {
+        const rawCode = invoice.customer.salespersonCode || invoice.customer.salespersonName;
+        if (rawCode) {
+          const mappedName = salespeopleMap.get(String(rawCode));
+          if (mappedName) {
+            invoice.customer.salespersonName = mappedName;
+          }
+        }
       }
 
       return {
