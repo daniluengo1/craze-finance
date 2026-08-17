@@ -22,8 +22,9 @@ export default function CashflowPage() {
   const [newBalance, setNewBalance] = useState('');
   const [filterType, setFilterType] = useState<'ALL' | 'AUTO' | 'MANUAL'>('ALL');
   const [showArchived, setShowArchived] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [selectedEntries, setSelectedEntries] = useState<any[]>([]);
   const [draggedItem, setDraggedItem] = useState<any>(null);
+  const [consolidatedCurrency, setConsolidatedCurrency] = useState('EUR');
   
   const getCurrencySymbol = (curr: string) => {
     switch (curr) {
@@ -36,6 +37,7 @@ export default function CashflowPage() {
 
   const [allBalances, setAllBalances] = useState<Record<string, number>>({});
   const [totalEurSum, setTotalEurSum] = useState<number | null>(null);
+  const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({ EUR: 1 });
 
   
   // Email states
@@ -84,7 +86,8 @@ export default function CashflowPage() {
         
         if (rateRes.ok) {
           const ratesData = await rateRes.json();
-          const rates = ratesData.rates;
+          const rates = { ...ratesData.rates, EUR: 1 };
+          setExchangeRates(rates);
           
           let totalEur = balances['EUR'] || 0;
           if (balances['USD'] && rates['USD']) totalEur += balances['USD'] / rates['USD'];
@@ -170,7 +173,7 @@ export default function CashflowPage() {
     if (!confirm('¿Estás seguro de eliminar esta línea manual?')) return;
     try {
       await fetch(`/api/cashflow?id=${id}`, { method: 'DELETE' });
-      setSelectedIds(prev => prev.filter(selectedId => selectedId !== parseInt(id)));
+      setSelectedEntries(prev => prev.filter(e => e.dbId !== parseInt(id)));
       fetchCashflow();
     } catch (error) {
       console.error('Failed to delete:', error);
@@ -178,11 +181,12 @@ export default function CashflowPage() {
   };
 
   const handleBulkDelete = async () => {
-    if (selectedIds.length === 0) {
-      if (confirm('No has seleccionado ninguna línea. ¿Quieres borrar TODAS las líneas manuales?')) {
+    const manualIds = selectedEntries.filter(e => e.isManual).map(e => e.dbId);
+    if (manualIds.length === 0) {
+      if (confirm('No has seleccionado ninguna línea manual. ¿Quieres borrar TODAS las líneas manuales?')) {
         try {
           await fetch(`/api/cashflow?clearAll=true`, { method: 'DELETE' });
-          setSelectedIds([]);
+          setSelectedEntries(prev => prev.filter(e => !e.isManual));
           fetchCashflow();
         } catch(e) {
           console.error(e);
@@ -191,12 +195,38 @@ export default function CashflowPage() {
       return;
     }
     
-    if (!confirm(`¿Borrar las ${selectedIds.length} líneas seleccionadas?`)) return;
+    if (!confirm(`¿Borrar las ${manualIds.length} líneas manuales seleccionadas?`)) return;
     try {
-      await fetch(`/api/cashflow?ids=${selectedIds.join(',')}`, {
+      await fetch(`/api/cashflow?ids=${manualIds.join(',')}`, {
         method: 'DELETE'
       });
-      setSelectedIds([]);
+      setSelectedEntries(prev => prev.filter(e => !manualIds.includes(e.dbId)));
+      fetchCashflow();
+    } catch(e) {
+      console.error(e);
+    }
+  };
+
+  const handleBulkArchive = async () => {
+    if (selectedEntries.length === 0) return;
+    const isArchiving = !selectedEntries[0].isArchived; 
+    if (!confirm(`¿${isArchiving ? 'Archivar' : 'Restaurar'} las ${selectedEntries.length} líneas seleccionadas?`)) return;
+    
+    const manualIds = selectedEntries.filter(e => e.isManual).map(e => e.dbId);
+    const invoiceIds = selectedEntries.filter(e => !e.isManual).flatMap(e => e.invoices ? e.invoices.map((i:any)=>i.id) : [e.id]);
+    
+    try {
+      await fetch(`/api/cashflow`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'archive_multiple',
+          isArchived: isArchiving,
+          manualIds,
+          invoiceIds
+        })
+      });
+      setSelectedEntries([]);
       fetchCashflow();
     } catch(e) {
       console.error(e);
@@ -497,11 +527,20 @@ export default function CashflowPage() {
             />
             <button 
               onClick={handleBulkDelete}
-              className="flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-gray-700 font-semibold font-bold rounded-lg border border-red-500/20 transition-colors text-sm"
-              title={selectedIds.length > 0 ? "Borrar Selección" : "Borrar Todo (Manuales)"}
+              className="flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-gray-700 font-bold rounded-lg border border-red-500/20 transition-colors text-sm"
+              title={selectedEntries.filter(e => e.isManual).length > 0 ? "Borrar Manuales Seleccionadas" : "Borrar Todo (Manuales)"}
             >
-              <Trash2 size={16} /> {selectedIds.length > 0 ? `Borrar (${selectedIds.length})` : 'Borrar Todas'}
+              <Trash2 size={16} /> {selectedEntries.filter(e => e.isManual).length > 0 ? `Borrar (${selectedEntries.filter(e => e.isManual).length})` : 'Borrar Todas'}
             </button>
+            {selectedEntries.length > 0 && (
+              <button 
+                onClick={handleBulkArchive}
+                className="flex items-center gap-2 px-4 py-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 font-bold rounded-lg border border-purple-500/20 transition-colors text-sm"
+                title="Archivar Seleccionadas"
+              >
+                <Archive size={16} /> Archivar ({selectedEntries.length})
+              </button>
+            )}
             <button 
               onClick={handleExportTemplate}
               className="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-gray-900 font-bold rounded-lg border border-emerald-500/20 transition-colors text-sm"
@@ -559,9 +598,22 @@ export default function CashflowPage() {
           </div>
           
           {totalEurSum !== null && (
-            <div className="bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 rounded-lg flex items-center gap-2">
-              <span className="text-emerald-800 font-bold text-sm uppercase tracking-wider">Saldo Total (Eq. EUR)</span>
-              <span className="text-emerald-700 font-black text-lg">€{totalEurSum.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <div className="bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 rounded-lg flex items-center gap-3">
+              <span className="text-emerald-800 font-bold text-sm uppercase tracking-wider whitespace-nowrap">Saldo Consolidado</span>
+              <select 
+                value={consolidatedCurrency} 
+                onChange={(e) => setConsolidatedCurrency(e.target.value)}
+                className="bg-emerald-500/20 text-emerald-900 border-none rounded p-1 text-xs font-bold outline-none cursor-pointer"
+              >
+                <option value="EUR">EUR</option>
+                <option value="USD">USD</option>
+                <option value="CHF">CHF</option>
+                <option value="GBP">GBP</option>
+              </select>
+              <span className="text-emerald-700 font-black text-lg">
+                {getCurrencySymbol(consolidatedCurrency)}
+                {(totalEurSum * (exchangeRates[consolidatedCurrency] || 1)).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
             </div>
           )}
         </div>
@@ -581,13 +633,14 @@ export default function CashflowPage() {
                         type="checkbox" 
                         className="rounded border-gray-300 bg-white text-blue-500 focus:ring-blue-500"
                         onChange={(e) => {
+                          const currentFilteredEntries = entries.filter(e => filterType === 'ALL' || (filterType === 'AUTO' && !e.isManual) || (filterType === 'MANUAL' && e.isManual));
                           if (e.target.checked) {
-                            setSelectedIds(entries.filter(e => e.isManual).map(e => e.dbId));
+                            setSelectedEntries(currentFilteredEntries);
                           } else {
-                            setSelectedIds([]);
+                            setSelectedEntries([]);
                           }
                         }}
-                        checked={entries.filter(e => e.isManual).length > 0 && selectedIds.length === entries.filter(e => e.isManual).length}
+                        checked={entries.length > 0 && selectedEntries.length === entries.filter(e => filterType === 'ALL' || (filterType === 'AUTO' && !e.isManual) || (filterType === 'MANUAL' && e.isManual)).length}
                       />
                     </th>
                     <th className="p-4">Fecha</th>
@@ -640,18 +693,16 @@ export default function CashflowPage() {
                           <td className="p-4 text-center cursor-move" title="Arrastrar para mover">
                             <div className="flex items-center justify-center gap-2">
                               <span className="text-gray-400 cursor-move">⋮⋮</span>
-                              {entry.isManual ? (
-                                <input 
-                                  type="checkbox"
+                              <input 
+                                type="checkbox"
                                 className="rounded border-gray-300 bg-white text-blue-500 focus:ring-blue-500"
-                                checked={selectedIds.includes(entry.dbId)}
+                                checked={selectedEntries.some(selected => selected.id === entry.id)}
                                 onChange={(e) => {
-                                  if (e.target.checked) setSelectedIds([...selectedIds, entry.dbId]);
-                                  else setSelectedIds(selectedIds.filter(id => id !== entry.dbId));
+                                  if (e.target.checked) setSelectedEntries([...selectedEntries, entry]);
+                                  else setSelectedEntries(selectedEntries.filter(selected => selected.id !== entry.id));
                                 }}
                                 onClick={e => e.stopPropagation()}
                               />
-                            ) : null}
                             </div>
                           </td>
                           <td className="p-4 font-medium text-gray-600">
