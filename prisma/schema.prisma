@@ -165,6 +165,19 @@ model CashflowManualEntry {
   updatedAt    DateTime @updatedAt
 }
 
+model InsurancePolicy {
+  id          Int      @id @default(autoincrement())
+  companyId   String
+  description String
+  startDate   DateTime
+  endDate     DateTime
+  fileName    String?
+  fileBase64  String?
+  extractedText String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 model User {
   id           Int      @id @default(autoincrement())
   username     String   @unique
