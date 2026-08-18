@@ -61,6 +61,6 @@ export async function POST(req: Request) {
 
   } catch (error: any) {
     console.error('Error in Insurance Bot:', error);
-    return NextResponse.json({ error: 'Error interno del bot de seguros' }, { status: 500 });
+    return NextResponse.json({ error: error.message || 'Error interno del bot de seguros' }, { status: 500 });
   }
 }
