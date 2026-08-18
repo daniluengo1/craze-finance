@@ -36,16 +36,34 @@ Si alguna fecha no aparece, intenta deducirla o déjala en blanco.
 
     const parts: any[] = [prompt];
     
-    attachments.forEach((att: any) => {
-      if (att.fileName?.toLowerCase().endsWith('.pdf') && att.fileBase64) {
-        parts.push({
-          inlineData: {
-            data: att.fileBase64.split(',')[1] || att.fileBase64,
-            mimeType: 'application/pdf'
+    for (const att of attachments) {
+      if (att.fileName?.toLowerCase().endsWith('.pdf')) {
+        if (att.fileBase64) {
+          parts.push({
+            inlineData: {
+              data: att.fileBase64.split(',')[1] || att.fileBase64,
+              mimeType: 'application/pdf'
+            }
+          });
+        } else if (att.fileUrl) {
+          try {
+            const fileRes = await fetch(att.fileUrl);
+            if (fileRes.ok) {
+              const arrayBuffer = await fileRes.arrayBuffer();
+              const base64 = Buffer.from(arrayBuffer).toString('base64');
+              parts.push({
+                inlineData: {
+                  data: base64,
+                  mimeType: 'application/pdf'
+                }
+              });
+            }
+          } catch (e) {
+            console.error('Error fetching fileUrl:', att.fileUrl, e);
           }
-        });
+        }
       }
-    });
+    }
 
     const result = await model.generateContent(parts);
 

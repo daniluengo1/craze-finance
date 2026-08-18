@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { ShieldCheck, Plus, FileText, Download, Trash2, Send, Bot, User as UserIcon, Loader2, Save, Edit2 } from 'lucide-react';
 import { useCompany, COMPANIES } from '@/contexts/CompanyContext';
+import { upload } from '@vercel/blob/client';
 
 interface Insurance {
   id: number;
@@ -11,7 +12,8 @@ interface Insurance {
   startDate: string;
   endDate: string;
   fileName: string | null;
-  attachments?: { fileName: string, fileBase64: string }[];
+  fileUrl?: string | null;
+  attachments?: { fileName: string, fileBase64?: string, fileUrl?: string }[];
 }
 
 interface ChatMessage {
@@ -43,7 +45,8 @@ export default function InsurancesPage() {
     endDate: '',
     fileName: '',
     fileBase64: '',
-    attachments: [] as {fileName: string, fileBase64: string}[]
+    fileUrl: '',
+    attachments: [] as {fileName: string, fileBase64?: string, fileUrl?: string}[]
   });
   const [isExtracting, setIsExtracting] = useState(false);
 
@@ -84,30 +87,38 @@ export default function InsurancesPage() {
     }
     if (validFiles.length === 0) return;
 
-    const newAttachments = [...(formData.attachments || [])];
-    
-    // Read all files
-    const filePromises = validFiles.map(file => {
-      return new Promise<{fileName: string, fileBase64: string}>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve({ fileName: file.name, fileBase64: reader.result as string });
-        reader.readAsDataURL(file);
-      });
-    });
+    let totalSize = 0;
+    validFiles.forEach(f => totalSize += f.size);
+    // Vercel Blob client-side uploads handle large files easily, but we can set a generous limit (e.g. 50MB)
+    if (totalSize > 50 * 1024 * 1024) {
+      alert('El tamaño total de los archivos supera el límite de 50MB.');
+      return;
+    }
 
-    const results = await Promise.all(filePromises);
-    results.forEach(res => newAttachments.push(res));
-
-    setFormData(prev => ({ ...prev, attachments: newAttachments }));
-
-    // Auto-extract using Gemini with all attachments
     setIsExtracting(true);
+    
     try {
+      // 1. Upload all files to Vercel Blob directly
+      const uploadPromises = validFiles.map(async file => {
+        const blob = await upload(file.name, file, {
+          access: 'public',
+          handleUploadUrl: '/api/upload',
+        });
+        return { fileName: blob.pathname, fileUrl: blob.url };
+      });
+
+      const uploadedFiles = await Promise.all(uploadPromises);
+      const newAttachments = [...(formData.attachments || []), ...uploadedFiles];
+      
+      setFormData(prev => ({ ...prev, attachments: newAttachments }));
+
+      // 2. Call Extract API with the URLs
       const res = await fetch('/api/insurances/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ attachments: newAttachments })
       });
+      
       if (res.ok) {
         const data = await res.json();
         setFormData(prev => ({
@@ -119,6 +130,7 @@ export default function InsurancesPage() {
       }
     } catch (error) {
       console.error("Error al extraer datos:", error);
+      alert('Error al subir los archivos o extraer datos. Comprueba la configuración de Vercel Blob.');
     } finally {
       setIsExtracting(false);
     }
@@ -151,14 +163,22 @@ export default function InsurancesPage() {
       if (res.ok) {
         setIsModalOpen(false);
         setEditingInsuranceId(null);
-        setFormData({ companyId: selectedCompany || 'CRAZE', description: '', startDate: '', endDate: '', fileName: '', fileBase64: '', attachments: [] });
+        setFormData({ companyId: selectedCompany || 'CRAZE', description: '', startDate: '', endDate: '', fileName: '', fileBase64: '', fileUrl: '', attachments: [] });
         fetchInsurances();
       } else {
-        const err = await res.json();
-        alert(err.error || 'Error al guardar');
+        if (res.status === 413) {
+          alert('Error: El archivo es demasiado grande para ser procesado por el servidor.');
+        } else {
+          try {
+            const err = await res.json();
+            alert(err.error || 'Error al guardar');
+          } catch(e) {
+            alert(`Error de servidor (${res.status}). Puede que el archivo sea muy grande.`);
+          }
+        }
       }
     } catch (e) {
-      alert('Error de conexión');
+      alert('Error de red. Comprueba tu conexión a internet.');
     } finally {
       setIsUploading(false);
     }
@@ -347,6 +367,7 @@ export default function InsurancesPage() {
                               endDate: policy.endDate.split('T')[0],
                               fileName: '',
                               fileBase64: '',
+                              fileUrl: '',
                               attachments: policy.attachments || []
                             });
                             setEditingInsuranceId(policy.id);

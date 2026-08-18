@@ -173,6 +173,7 @@ model InsurancePolicy {
   endDate     DateTime
   fileName    String?
   fileBase64  String?
+  fileUrl     String?
   extractedText String?
   attachments Json?    @default("[]")
   createdAt   DateTime @default(now())

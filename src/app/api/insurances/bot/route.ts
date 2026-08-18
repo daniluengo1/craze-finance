@@ -43,7 +43,8 @@ Utiliza esta información para responder a la pregunta del usuario.
 DATOS BÁSICOS DE LAS PÓLIZAS:
 `;
 
-    policies.forEach((policy, index) => {
+    let index = 0;
+    for (const policy of policies) {
       let attachmentsList = [];
       let hasLegacyFile = policy.fileBase64 && policy.fileName?.toLowerCase().endsWith('.pdf');
       
@@ -73,18 +74,47 @@ Archivos adjuntos: ${attachmentsList.length > 0 ? attachmentsList.join(', ') : '
         });
       }
       
-      // Attach all new attachments
-      parsedAttachments.forEach(att => {
-        if (att.fileName?.toLowerCase().endsWith('.pdf') && att.fileBase64) {
-          parts.push({
-            inlineData: {
-              data: att.fileBase64.split(',')[1] || att.fileBase64,
-              mimeType: 'application/pdf'
-            }
-          });
+      // Attach new main fileUrl
+      if (policy.fileUrl && policy.fileName?.toLowerCase().endsWith('.pdf')) {
+        try {
+          const fileRes = await fetch(policy.fileUrl);
+          if (fileRes.ok) {
+            const arrayBuffer = await fileRes.arrayBuffer();
+            const base64 = Buffer.from(arrayBuffer).toString('base64');
+            parts.push({ inlineData: { data: base64, mimeType: 'application/pdf' } });
+          }
+        } catch (e) {
+          console.error('Error fetching fileUrl:', policy.fileUrl, e);
         }
-      });
-    });
+      }
+
+      // Attach all new attachments
+      for (const att of parsedAttachments) {
+        if (att.fileName?.toLowerCase().endsWith('.pdf')) {
+          if (att.fileBase64) {
+            parts.push({
+              inlineData: {
+                data: att.fileBase64.split(',')[1] || att.fileBase64,
+                mimeType: 'application/pdf'
+              }
+            });
+          } else if (att.fileUrl) {
+            try {
+              const fileRes = await fetch(att.fileUrl);
+              if (fileRes.ok) {
+                const arrayBuffer = await fileRes.arrayBuffer();
+                const base64 = Buffer.from(arrayBuffer).toString('base64');
+                parts.push({ inlineData: { data: base64, mimeType: 'application/pdf' } });
+              }
+            } catch (e) {
+              console.error('Error fetching fileUrl:', att.fileUrl, e);
+            }
+          }
+        }
+      }
+      
+      index++;
+    }
 
     contextText += `\nPREGUNTA DEL USUARIO: ${message}`;
     
