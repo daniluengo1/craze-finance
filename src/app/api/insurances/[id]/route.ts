@@ -48,7 +48,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     const defaultCompanyId = cookieStore.get('craze_selected_company')?.value || 'CRAZE';
     
     const body = await req.json();
-    const { companyId = defaultCompanyId, description, startDate, endDate, fileName, fileBase64 } = body;
+    const { companyId = defaultCompanyId, description, startDate, endDate, fileName, fileBase64, attachments } = body;
 
     if (!description || !startDate || !endDate) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -61,10 +61,15 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       endDate: new Date(endDate)
     };
 
-    // If a new file is uploaded, update it
+    // If a new file is uploaded for backwards compatibility, update it
     if (fileBase64 && fileName) {
       updateData.fileName = fileName;
       updateData.fileBase64 = fileBase64;
+    }
+    
+    // Always update attachments if provided
+    if (attachments !== undefined) {
+      updateData.attachments = attachments;
     }
 
     const policy = await prisma.insurancePolicy.update({

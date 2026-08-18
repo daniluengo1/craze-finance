@@ -11,6 +11,7 @@ interface Insurance {
   startDate: string;
   endDate: string;
   fileName: string | null;
+  attachments?: { fileName: string, fileBase64: string }[];
 }
 
 interface ChatMessage {
@@ -41,7 +42,8 @@ export default function InsurancesPage() {
     startDate: '',
     endDate: '',
     fileName: '',
-    fileBase64: ''
+    fileBase64: '',
+    attachments: [] as {fileName: string, fileBase64: string}[]
   });
   const [isExtracting, setIsExtracting] = useState(false);
 
@@ -72,43 +74,61 @@ export default function InsurancesPage() {
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (!file.name.toLowerCase().endsWith('.pdf')) {
-        alert('Por favor, selecciona un archivo PDF.');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64 = reader.result as string;
-        setFormData({ ...formData, fileName: file.name, fileBase64: base64 });
-        
-        // Auto-extract using Gemini
-        setIsExtracting(true);
-        try {
-          const res = await fetch('/api/insurances/extract', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ fileName: file.name, fileBase64: base64 })
-          });
-          if (res.ok) {
-            const data = await res.json();
-            setFormData(prev => ({
-              ...prev,
-              description: data.description || prev.description,
-              startDate: data.startDate || prev.startDate,
-              endDate: data.endDate || prev.endDate
-            }));
-          }
-        } catch (error) {
-          console.error("Error al extraer datos:", error);
-        } finally {
-          setIsExtracting(false);
-        }
-      };
-      reader.readAsDataURL(file);
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    const validFiles = files.filter(f => f.name.toLowerCase().endsWith('.pdf'));
+    if (validFiles.length !== files.length) {
+      alert('Algunos archivos no son PDF. Solo se han seleccionado los PDFs.');
     }
+    if (validFiles.length === 0) return;
+
+    const newAttachments = [...(formData.attachments || [])];
+    
+    // Read all files
+    const filePromises = validFiles.map(file => {
+      return new Promise<{fileName: string, fileBase64: string}>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve({ fileName: file.name, fileBase64: reader.result as string });
+        reader.readAsDataURL(file);
+      });
+    });
+
+    const results = await Promise.all(filePromises);
+    results.forEach(res => newAttachments.push(res));
+
+    setFormData(prev => ({ ...prev, attachments: newAttachments }));
+
+    // Auto-extract using Gemini with all attachments
+    setIsExtracting(true);
+    try {
+      const res = await fetch('/api/insurances/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attachments: newAttachments })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setFormData(prev => ({
+          ...prev,
+          description: data.description || prev.description,
+          startDate: data.startDate || prev.startDate,
+          endDate: data.endDate || prev.endDate
+        }));
+      }
+    } catch (error) {
+      console.error("Error al extraer datos:", error);
+    } finally {
+      setIsExtracting(false);
+    }
+  };
+
+  const removeAttachment = (indexToRemove: number) => {
+    setFormData(prev => ({
+      ...prev,
+      attachments: prev.attachments.filter((_, idx) => idx !== indexToRemove)
+    }));
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -131,7 +151,7 @@ export default function InsurancesPage() {
       if (res.ok) {
         setIsModalOpen(false);
         setEditingInsuranceId(null);
-        setFormData({ companyId: selectedCompany || 'CRAZE', description: '', startDate: '', endDate: '', fileName: '', fileBase64: '' });
+        setFormData({ companyId: selectedCompany || 'CRAZE', description: '', startDate: '', endDate: '', fileName: '', fileBase64: '', attachments: [] });
         fetchInsurances();
       } else {
         const err = await res.json();
@@ -154,18 +174,44 @@ export default function InsurancesPage() {
     }
   };
 
-  const handleDownload = async (id: number, fileName: string) => {
+  const handleDownload = async (id: number, legacyFileName: string | null) => {
     try {
       const res = await fetch(`/api/insurances/${id}`);
       const data = await res.json();
       
-      if (data.fileBase64) {
+      let parsedAttachments: any[] = [];
+      if (data.attachments) {
+        if (typeof data.attachments === 'string') {
+          try { parsedAttachments = JSON.parse(data.attachments); } catch(e){}
+        } else if (Array.isArray(data.attachments)) {
+          parsedAttachments = data.attachments;
+        }
+      }
+
+      let downloadedCount = 0;
+
+      // Download legacy file if present
+      if (data.fileBase64 && legacyFileName) {
         const a = document.createElement('a');
         a.href = data.fileBase64;
-        a.download = fileName;
+        a.download = legacyFileName;
         a.click();
-      } else {
-        alert('Este seguro no tiene archivo adjunto');
+        downloadedCount++;
+      }
+
+      // Download all attachments
+      parsedAttachments.forEach(att => {
+        if (att.fileBase64 && att.fileName) {
+          const a = document.createElement('a');
+          a.href = att.fileBase64;
+          a.download = att.fileName;
+          a.click();
+          downloadedCount++;
+        }
+      });
+
+      if (downloadedCount === 0) {
+        alert('Este seguro no tiene archivos adjuntos');
       }
     } catch (e) {
       alert('Error al descargar');
@@ -279,9 +325,17 @@ export default function InsurancesPage() {
                         <p className="text-sm text-gray-500 mt-1">
                           {start.toLocaleDateString()} - {end.toLocaleDateString()}
                         </p>
-                        <span className={`inline-block mt-2 px-2 py-0.5 rounded text-xs font-bold ${statusColor}`}>
-                          {statusText}
-                        </span>
+                        <div className="flex items-center gap-3 mt-2">
+                          <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold ${statusColor}`}>
+                            {statusText}
+                          </span>
+                          {(policy.attachments?.length || policy.fileName) ? (
+                            <span className="flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                              <FileText size={12} />
+                              {((policy.attachments?.length || 0) + (policy.fileName ? 1 : 0))} documento(s)
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
                       <div className="flex gap-2 items-center opacity-0 group-hover:opacity-100 transition-opacity">
                         <button 
@@ -292,7 +346,8 @@ export default function InsurancesPage() {
                               startDate: policy.startDate.split('T')[0],
                               endDate: policy.endDate.split('T')[0],
                               fileName: '',
-                              fileBase64: ''
+                              fileBase64: '',
+                              attachments: policy.attachments || []
                             });
                             setEditingInsuranceId(policy.id);
                             setIsModalOpen(true);
@@ -302,11 +357,11 @@ export default function InsurancesPage() {
                         >
                           <Edit2 size={18} />
                         </button>
-                        {policy.fileName && (
+                        {(policy.fileName || (policy.attachments && policy.attachments.length > 0)) && (
                           <button 
-                            onClick={() => handleDownload(policy.id, policy.fileName!)}
+                            onClick={() => handleDownload(policy.id, policy.fileName)}
                             className="p-2 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
-                            title="Descargar Póliza"
+                            title="Descargar Documentos"
                           >
                             <Download size={18} />
                           </button>
@@ -443,15 +498,40 @@ export default function InsurancesPage() {
                 </div>
               </div>
               <div className="flex flex-col space-y-1">
-                <label className="text-sm font-medium text-gray-700">Documento de Póliza (PDF)</label>
+                <label className="text-sm font-medium text-gray-700">Documentos Adjuntos (Múltiples PDF)</label>
                 <div className="flex items-center space-x-2">
-                  <input type="file" accept=".pdf" onChange={handleFileChange} className="w-full rounded-md border border-gray-300 p-2 text-sm file:mr-4 file:rounded-full file:border-0 file:bg-blue-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-blue-700 hover:file:bg-blue-100" />
+                  <input type="file" multiple accept=".pdf" onChange={handleFileChange} className="w-full rounded-md border border-gray-300 p-2 text-sm file:mr-4 file:rounded-full file:border-0 file:bg-blue-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-blue-700 hover:file:bg-blue-100" />
                   {isExtracting && <Loader2 className="h-5 w-5 animate-spin text-blue-600" />}
                 </div>
                 {isExtracting ? (
-                  <p className="text-xs text-blue-600 font-medium">✨ Leyendo la póliza con IA...</p>
+                  <p className="text-xs text-blue-600 font-medium">✨ Leyendo pólizas con IA...</p>
                 ) : (
-                  <p className="text-xs text-gray-500">Sube el PDF para autocompletar los datos y que el asistente pueda leerlo.</p>
+                  <p className="text-xs text-gray-500">Puedes seleccionar varios PDFs a la vez. La IA los leerá todos para extraer la información.</p>
+                )}
+                
+                {/* List of current attachments */}
+                {formData.attachments && formData.attachments.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-xs font-semibold text-gray-600">Archivos seleccionados:</p>
+                    <div className="max-h-32 overflow-y-auto space-y-1 pr-2">
+                      {formData.attachments.map((att, idx) => (
+                        <div key={idx} className="flex justify-between items-center bg-gray-50 border border-gray-200 rounded p-2">
+                          <span className="text-xs text-gray-700 truncate flex-1 flex items-center gap-1">
+                            <FileText size={12} className="text-indigo-500" />
+                            {att.fileName}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => removeAttachment(idx)}
+                            className="text-red-500 hover:text-red-700 p-1"
+                            title="Eliminar archivo"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </div>
 

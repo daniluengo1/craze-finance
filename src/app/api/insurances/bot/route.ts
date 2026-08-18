@@ -44,20 +44,46 @@ DATOS BÁSICOS DE LAS PÓLIZAS:
 `;
 
     policies.forEach((policy, index) => {
+      let attachmentsList = [];
+      let hasLegacyFile = policy.fileBase64 && policy.fileName?.toLowerCase().endsWith('.pdf');
+      
+      let parsedAttachments: any[] = [];
+      if (policy.attachments && typeof policy.attachments === 'string') {
+        try { parsedAttachments = JSON.parse(policy.attachments); } catch(e){}
+      } else if (Array.isArray(policy.attachments)) {
+        parsedAttachments = policy.attachments;
+      }
+
+      if (hasLegacyFile) attachmentsList.push(policy.fileName);
+      parsedAttachments.forEach(att => attachmentsList.push(att.fileName));
+
       contextText += `\n--- PÓLIZA ${index + 1} ---
 Nombre: ${policy.description}
 Válida desde: ${policy.startDate.toLocaleDateString()} hasta ${policy.endDate.toLocaleDateString()}
-Archivo adjunto: ${policy.fileBase64 ? 'SÍ (ver documento PDF adjunto)' : 'NO HAY DOCUMENTO ADJUNTO'}
+Archivos adjuntos: ${attachmentsList.length > 0 ? attachmentsList.join(', ') : 'NO HAY DOCUMENTOS ADJUNTOS'}
 `;
-      // Attach PDF to Gemini vision
-      if (policy.fileBase64 && policy.fileName?.toLowerCase().endsWith('.pdf')) {
+      
+      // Attach legacy PDF
+      if (hasLegacyFile) {
         parts.push({
           inlineData: {
-            data: policy.fileBase64.split(',')[1] || policy.fileBase64,
+            data: policy.fileBase64!.split(',')[1] || policy.fileBase64!,
             mimeType: 'application/pdf'
           }
         });
       }
+      
+      // Attach all new attachments
+      parsedAttachments.forEach(att => {
+        if (att.fileName?.toLowerCase().endsWith('.pdf') && att.fileBase64) {
+          parts.push({
+            inlineData: {
+              data: att.fileBase64.split(',')[1] || att.fileBase64,
+              mimeType: 'application/pdf'
+            }
+          });
+        }
+      });
     });
 
     contextText += `\nPREGUNTA DEL USUARIO: ${message}`;
