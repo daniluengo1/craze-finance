@@ -6,6 +6,7 @@ import { useCompany, COMPANIES } from '@/contexts/CompanyContext';
 
 interface Insurance {
   id: number;
+  companyId: string;
   description: string;
   startDate: string;
   endDate: string;
@@ -249,7 +250,12 @@ export default function InsurancesPage() {
                   return (
                     <div key={policy.id} className="p-4 border border-gray-100 rounded-xl hover:shadow-md transition-shadow bg-white flex items-center justify-between group">
                       <div>
-                        <h3 className="font-bold text-gray-900">{policy.description}</h3>
+                        <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                          {policy.description}
+                          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full font-medium">
+                            {policy.companyId}
+                          </span>
+                        </h3>
                         <p className="text-sm text-gray-500 mt-1">
                           {start.toLocaleDateString()} - {end.toLocaleDateString()}
                         </p>
