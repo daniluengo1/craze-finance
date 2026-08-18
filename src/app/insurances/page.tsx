@@ -43,6 +43,7 @@ export default function InsurancesPage() {
     fileName: '',
     fileBase64: ''
   });
+  const [isExtracting, setIsExtracting] = useState(false);
 
   useEffect(() => {
     if (selectedCompany) fetchInsurances();
@@ -73,22 +74,41 @@ export default function InsurancesPage() {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.name.toLowerCase().endsWith('.pdf')) {
-      alert('Solo se permiten archivos PDF');
-      return;
+    if (file) {
+      if (!file.name.toLowerCase().endsWith('.pdf')) {
+        alert('Por favor, selecciona un archivo PDF.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64 = reader.result as string;
+        setFormData({ ...formData, fileName: file.name, fileBase64: base64 });
+        
+        // Auto-extract using Gemini
+        setIsExtracting(true);
+        try {
+          const res = await fetch('/api/insurances/extract', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fileName: file.name, fileBase64: base64 })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setFormData(prev => ({
+              ...prev,
+              description: data.description || prev.description,
+              startDate: data.startDate || prev.startDate,
+              endDate: data.endDate || prev.endDate
+            }));
+          }
+        } catch (error) {
+          console.error("Error al extraer datos:", error);
+        } finally {
+          setIsExtracting(false);
+        }
+      };
+      reader.readAsDataURL(file);
     }
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setFormData({
-        ...formData,
-        fileName: file.name,
-        fileBase64: event.target?.result as string
-      });
-    };
-    reader.readAsDataURL(file);
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -422,17 +442,17 @@ export default function InsurancesPage() {
                   />
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">Documento de Póliza (PDF)</label>
-                <input 
-                  type="file" 
-                  accept="application/pdf"
-                  onChange={handleFileChange}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2 text-sm"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  {editingInsuranceId ? "Sube un nuevo archivo solo si quieres reemplazar el actual." : "Sube el PDF para que el asistente pueda leerlo."}
-                </p>
+              <div className="flex flex-col space-y-1">
+                <label className="text-sm font-medium text-gray-700">Documento de Póliza (PDF)</label>
+                <div className="flex items-center space-x-2">
+                  <input type="file" accept=".pdf" onChange={handleFileChange} className="w-full rounded-md border border-gray-300 p-2 text-sm file:mr-4 file:rounded-full file:border-0 file:bg-blue-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-blue-700 hover:file:bg-blue-100" />
+                  {isExtracting && <Loader2 className="h-5 w-5 animate-spin text-blue-600" />}
+                </div>
+                {isExtracting ? (
+                  <p className="text-xs text-blue-600 font-medium">✨ Leyendo la póliza con IA...</p>
+                ) : (
+                  <p className="text-xs text-gray-500">Sube el PDF para autocompletar los datos y que el asistente pueda leerlo.</p>
+                )}
               </div>
 
               <div className="pt-4 flex justify-end gap-3 border-t border-gray-100">

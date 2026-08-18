@@ -35,26 +35,37 @@ export async function POST(req: Request) {
     }
 
     // Build Context
-    let context = "Eres el asistente inteligente de seguros de la empresa Craze. Tu tarea es responder dudas sobre incidencias basadas ESTRICTAMENTE en las siguientes pólizas de la empresa:\n\n";
+    const parts: any[] = [];
+    let contextText = `Eres un asistente inteligente especializado en seguros de la empresa ${policies.length > 0 ? policies[0].companyId : 'CRAZE'}.
+A continuación se adjuntan los documentos PDF de las pólizas activas de esta empresa, así como sus datos básicos.
+Utiliza esta información para responder a la pregunta del usuario.
 
-    policies.forEach((policy) => {
-      const isActive = new Date() >= policy.startDate && new Date() <= policy.endDate;
-      context += `--- SEGURO: ${policy.description} ---\n`;
-      context += `Empresa titular: ${policy.companyId}\n`;
-      context += `Estado: ${isActive ? 'ACTIVO' : 'CADUCADO'} (Válido del ${policy.startDate.toLocaleDateString()} al ${policy.endDate.toLocaleDateString()})\n`;
-      if (policy.extractedText) {
-        // Limit text length if it's too massive, but usually 50k tokens is fine for GPT-4o
-        context += `TEXTO DE LA PÓLIZA:\n${policy.extractedText.substring(0, 30000)}\n`; 
-      } else {
-        context += `TEXTO DE LA PÓLIZA: No hay documento adjunto o no se pudo extraer el texto.\n`;
+DATOS BÁSICOS DE LAS PÓLIZAS:
+`;
+
+    policies.forEach((policy, index) => {
+      contextText += `\n--- PÓLIZA ${index + 1} ---
+Nombre: ${policy.description}
+Válida desde: ${policy.startDate.toLocaleDateString()} hasta ${policy.endDate.toLocaleDateString()}
+Archivo adjunto: ${policy.fileBase64 ? 'SÍ (ver documento PDF adjunto)' : 'NO HAY DOCUMENTO ADJUNTO'}
+`;
+      // Attach PDF to Gemini vision
+      if (policy.fileBase64 && policy.fileName?.toLowerCase().endsWith('.pdf')) {
+        parts.push({
+          inlineData: {
+            data: policy.fileBase64.split(',')[1] || policy.fileBase64,
+            mimeType: 'application/pdf'
+          }
+        });
       }
-      context += `---------------------------------\n\n`;
     });
 
-    context += "Responde de forma clara y directa a la siguiente consulta del usuario. Si un seguro no cubre algo o está caducado, avísalo explícitamente. Si no encuentras la respuesta en las pólizas proporcionadas, di que no lo sabes basándote en la documentación.\n";
-    context += "\nCONSULTA DEL USUARIO: " + message;
+    contextText += `\nPREGUNTA DEL USUARIO: ${message}`;
+    
+    // The prompt text goes first
+    parts.unshift(contextText);
 
-    const result = await model.generateContent(context);
+    const result = await model.generateContent(parts);
     const reply = result.response.text();
 
     return NextResponse.json({ reply });

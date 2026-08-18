@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import prisma from '@/lib/prisma';
 import { logAction } from '@/lib/logger';
-const pdfParse = require('pdf-parse');
 
 export const dynamic = 'force-dynamic';
 
@@ -62,21 +61,10 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       endDate: new Date(endDate)
     };
 
-    // If a new file is uploaded, update it and try to extract text
+    // If a new file is uploaded, update it
     if (fileBase64 && fileName) {
       updateData.fileName = fileName;
       updateData.fileBase64 = fileBase64;
-      
-      if (fileName.toLowerCase().endsWith('.pdf')) {
-        try {
-          const base64Data = fileBase64.split(',')[1] || fileBase64;
-          const buffer = Buffer.from(base64Data, 'base64');
-          const pdfData = await pdfParse(buffer);
-          updateData.extractedText = pdfData.text || '';
-        } catch (parseError) {
-          console.error('Failed to parse PDF text:', parseError);
-        }
-      }
     }
 
     const policy = await prisma.insurancePolicy.update({
