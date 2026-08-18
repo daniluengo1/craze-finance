@@ -1,0 +1,217 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Customer {
+  id              Int      @id @default(autoincrement())
+  bcId            String?
+  companyId       String   @default("CRAZE")
+  name            String
+  email           String?
+  paymentMethod   String
+  riskLimit       Float    @default(0)
+  balance         Float    @default(0)
+  calculatedRisk  String?
+  suggestedAction String?
+  salespersonCode String?
+  salespersonName String?
+  salespersonReminderCount Int @default(0)
+  salespersonLastReminderDate DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  invoices        Invoice[]
+  
+  @@unique([bcId, companyId])
+}
+
+model Invoice {
+  id                   Int        @id @default(autoincrement())
+  bcId                 String?
+  companyId            String     @default("CRAZE")
+  customerId           Int
+  customer             Customer   @relation(fields: [customerId], references: [id])
+  type                 String
+  status               String
+  amount               Float
+  originalAmount       Float?
+  currencyCode         String?
+  paymentMethod        String?
+  dueDate              DateTime
+  cashflowDate         DateTime?
+  confirmedPaymentDate DateTime?
+  isArchived           Boolean   @default(false)
+  lastReminderDate     DateTime?
+  reminders            Reminder[]
+
+  @@unique([bcId, companyId])
+}
+
+model Reminder {
+  id             Int      @id @default(autoincrement())
+  invoiceId      Int
+  invoice        Invoice  @relation(fields: [invoiceId], references: [id])
+  sentAt         DateTime @default(now())
+  messageContent String
+}
+
+model ApiConfig {
+  key       String   @id
+  url       String
+  config    String?
+  updatedAt DateTime @updatedAt
+}
+
+model CashflowConfig {
+  id             Int    @id @default(autoincrement())
+  companyId      String @default("CRAZE")
+  currencyCode   String @default("EUR")
+  initialBalance Float  @default(0)
+  
+  @@unique([companyId, currencyCode])
+}
+
+model EmailConfig {
+  id        Int      @id @default(1)
+  host      String
+  port      Int      @default(587)
+  secure    Boolean  @default(false)
+  user      String
+  password  String
+  fromName  String
+  fromEmail String
+  updatedAt DateTime @updatedAt
+}
+
+model BusinessCentralConfig {
+  id           Int      @id @default(1)
+  tenantId     String
+  clientId     String
+  clientSecret String
+  environment  String   @default("Production")
+  companyId    String
+  updatedAt    DateTime @updatedAt
+}
+
+model Vendor {
+  id              Int      @id @default(autoincrement())
+  bcId            String?
+  companyId       String   @default("CRAZE")
+  name            String
+  email           String?
+  paymentMethod   String?
+  balance         Float    @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  purchaseInvoices PurchaseInvoice[]
+
+  @@unique([bcId, companyId])
+}
+
+model PurchaseInvoice {
+  id                   Int        @id @default(autoincrement())
+  bcId                 String?
+  companyId            String     @default("CRAZE")
+  vendorId             Int
+  vendor               Vendor     @relation(fields: [vendorId], references: [id])
+  type                 String
+  status               String
+  amount               Float
+  originalAmount       Float?
+  currencyCode         String?
+  paymentMethod        String?
+  dueDate              DateTime
+  
+  percentagePaymentApproval Float? @default(0)
+  approvalUsers        String?
+  approvedUsers        String?
+  rejectedUsers        String?
+  noPayment            Boolean? @default(false)
+  noPaymentReason      String?
+  skipApproval         Boolean? @default(false)
+  schedulePaymentDate  DateTime?
+
+  approvals            ApprovalEntry[]
+}
+
+model ApprovalEntry {
+  id             Int      @id @default(autoincrement())
+  invoiceId      Int
+  invoice        PurchaseInvoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  approverId     String
+  status         String
+  sequenceNo     Int      @default(1)
+}
+
+model CashflowManualEntry {
+  id           Int      @id @default(autoincrement())
+  companyId    String   @default("CRAZE")
+  currencyCode String   @default("EUR")
+  date         DateTime
+  description  String
+  amount       Float
+  isArchived   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model InsurancePolicy {
+  id          Int      @id @default(autoincrement())
+  companyId   String
+  description String
+  startDate   DateTime
+  endDate     DateTime
+  fileName    String?
+  fileBase64  String?
+  fileUrl     String?
+  extractedText String?
+  attachments Json?    @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique
+  passwordHash String
+  permissions  String   // JSON string array of modules (e.g. '["dashboard", "cashflow"]')
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model ActionLog {
+  id        Int      @id @default(autoincrement())
+  date      DateTime @default(now())
+  user      String
+  action    String
+  details   String?
+  companyId String?
+}
+
+model InventoryValuation {
+  id              Int      @id @default(autoincrement())
+  companyId       String   @default("CRAZE")
+  month           DateTime // Mes del cierre (ej. 2026-06-30)
+  totalSystemVal  Float    // Valoración actual reportada en BC
+  totalNewVal     Float    // Valoración calculada coste medio
+  difference      Float    // Diferencia (invNuevo - invActual)
+  details         String?  // JSON string con desglose por items (opcional)
+  createdAt       DateTime @default(now())
+}
+
+model BwaReport {
+  id           Int      @id @default(autoincrement())
+  companyId    String   @default("CRAZE")
+  date         DateTime @default(now())
+  data         String   @db.Text
+}
