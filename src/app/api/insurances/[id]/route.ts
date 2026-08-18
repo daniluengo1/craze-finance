@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import prisma from '@/lib/prisma';
 import { logAction } from '@/lib/logger';
-const pdfParse = require('pdf-parse');
+
+export const dynamic = 'force-dynamic';
 
 // Needs to be awaited in Next 15
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -67,6 +68,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       
       if (fileName.toLowerCase().endsWith('.pdf')) {
         try {
+          const pdfParse = require('pdf-parse');
           const base64Data = fileBase64.split(',')[1] || fileBase64;
           const buffer = Buffer.from(base64Data, 'base64');
           const pdfData = await pdfParse(buffer);

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import prisma from '@/lib/prisma';
-import OpenAI from 'openai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export const maxDuration = 60; // Allow 60s for OpenAI
 
@@ -16,13 +16,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
     }
 
-    if (!process.env.OPENAI_API_KEY) {
-      return NextResponse.json({ error: 'No se ha configurado OPENAI_API_KEY en el servidor (.env)' }, { status: 500 });
+    if (!process.env.GEMINI_API_KEY) {
+      return NextResponse.json({ error: 'No se ha configurado GEMINI_API_KEY en el servidor (.env)' }, { status: 500 });
     }
 
-    const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY
-    });
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
     // Fetch all insurances for this company to provide context
     const policies = await prisma.insurancePolicy.findMany({
@@ -53,17 +52,10 @@ export async function POST(req: Request) {
     });
 
     context += "Responde de forma clara y directa a la siguiente consulta del usuario. Si un seguro no cubre algo o está caducado, avísalo explícitamente. Si no encuentras la respuesta en las pólizas proporcionadas, di que no lo sabes basándote en la documentación.\n";
+    context += "\nCONSULTA DEL USUARIO: " + message;
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini", // Using gpt-4o-mini as it is fast, cheap and has 128k context
-      messages: [
-        { role: "system", content: context },
-        { role: "user", content: message }
-      ],
-      temperature: 0.2,
-    });
-
-    const reply = completion.choices[0].message.content;
+    const result = await model.generateContent(context);
+    const reply = result.response.text();
 
     return NextResponse.json({ reply });
 
