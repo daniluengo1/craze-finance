@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import prisma from '@/lib/prisma';
 import { logAction } from '@/lib/logger';
+const pdfParse = require('pdf-parse');
 
 // Needs to be awaited in Next 15
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -36,5 +37,62 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to delete policy' }, { status: 500 });
+  }
+}
+
+export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params;
+    const cookieStore = await cookies();
+    const defaultCompanyId = cookieStore.get('craze_selected_company')?.value || 'CRAZE';
+    
+    const body = await req.json();
+    const { companyId = defaultCompanyId, description, startDate, endDate, fileName, fileBase64 } = body;
+
+    if (!description || !startDate || !endDate) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    const updateData: any = {
+      companyId,
+      description,
+      startDate: new Date(startDate),
+      endDate: new Date(endDate)
+    };
+
+    // If a new file is uploaded, update it and try to extract text
+    if (fileBase64 && fileName) {
+      updateData.fileName = fileName;
+      updateData.fileBase64 = fileBase64;
+      
+      if (fileName.toLowerCase().endsWith('.pdf')) {
+        try {
+          const base64Data = fileBase64.split(',')[1] || fileBase64;
+          const buffer = Buffer.from(base64Data, 'base64');
+          const pdfData = await pdfParse(buffer);
+          updateData.extractedText = pdfData.text || '';
+        } catch (parseError) {
+          console.error('Failed to parse PDF text:', parseError);
+        }
+      }
+    }
+
+    const policy = await prisma.insurancePolicy.update({
+      where: { id: parseInt(id) },
+      data: updateData
+    });
+
+    await logAction('Actualizar Seguro', `Seguro actualizado/renovado: ${policy.description}`, companyId);
+
+    return NextResponse.json({
+      id: policy.id,
+      description: policy.description,
+      startDate: policy.startDate,
+      endDate: policy.endDate,
+      fileName: policy.fileName
+    });
+  } catch (error: any) {
+    console.error('Error updating insurance:', error);
+    return NextResponse.json({ error: 'Failed to update insurance' }, { status: 500 });
   }
 }

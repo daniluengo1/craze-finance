@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { ShieldCheck, Plus, FileText, Download, Trash2, Send, Bot, User as UserIcon, Loader2, Save } from 'lucide-react';
+import { ShieldCheck, Plus, FileText, Download, Trash2, Send, Bot, User as UserIcon, Loader2, Save, Edit2 } from 'lucide-react';
 import { useCompany, COMPANIES } from '@/contexts/CompanyContext';
 
 interface Insurance {
@@ -33,6 +33,7 @@ export default function InsurancesPage() {
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [editingInsuranceId, setEditingInsuranceId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     companyId: selectedCompany || 'CRAZE',
     description: '',
@@ -97,14 +98,18 @@ export default function InsurancesPage() {
 
     setIsUploading(true);
     try {
-      const res = await fetch('/api/insurances', {
-        method: 'POST',
+      const url = editingInsuranceId ? `/api/insurances/${editingInsuranceId}` : '/api/insurances';
+      const method = editingInsuranceId ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
       });
 
       if (res.ok) {
         setIsModalOpen(false);
+        setEditingInsuranceId(null);
         setFormData({ companyId: selectedCompany || 'CRAZE', description: '', startDate: '', endDate: '', fileName: '', fileBase64: '' });
         fetchInsurances();
       } else {
@@ -187,7 +192,10 @@ export default function InsurancesPage() {
           <p className="text-gray-500 mt-1">Controla las pólizas de {selectedCompany} y consulta dudas con la IA</p>
         </div>
         <button 
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => {
+            setEditingInsuranceId(null);
+            setIsModalOpen(true);
+          }}
           className="flex items-center gap-2 px-5 py-2.5 bg-black hover:bg-gray-800 text-white rounded-lg shadow-lg font-medium transition-colors"
         >
           <Plus size={18} /> Añadir Seguro
@@ -249,7 +257,25 @@ export default function InsurancesPage() {
                           {statusText}
                         </span>
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button 
+                          onClick={() => {
+                            setFormData({
+                              companyId: selectedCompany || 'CRAZE',
+                              description: policy.description,
+                              startDate: policy.startDate.split('T')[0],
+                              endDate: policy.endDate.split('T')[0],
+                              fileName: '',
+                              fileBase64: ''
+                            });
+                            setEditingInsuranceId(policy.id);
+                            setIsModalOpen(true);
+                          }}
+                          className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                          title="Editar Seguro"
+                        >
+                          <Edit2 size={18} />
+                        </button>
                         {policy.fileName && (
                           <button 
                             onClick={() => handleDownload(policy.id, policy.fileName!)}
@@ -261,7 +287,7 @@ export default function InsurancesPage() {
                         )}
                         <button 
                           onClick={() => handleDelete(policy.id)}
-                          className="p-2 text-red-500 bg-red-50 hover:bg-red-100 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                          className="p-2 text-red-500 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
                           title="Eliminar Seguro"
                         >
                           <Trash2 size={18} />
@@ -336,7 +362,11 @@ export default function InsurancesPage() {
           <div className="bg-white border border-gray-200 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
             <div className="p-6 border-b border-gray-200">
               <h3 className="text-xl font-bold flex items-center gap-2">
-                <Plus className="text-indigo-600" /> Añadir Póliza de Seguro
+                {editingInsuranceId ? (
+                  <><Edit2 className="text-indigo-600" /> Editar/Renovar Póliza</>
+                ) : (
+                  <><Plus className="text-indigo-600" /> Añadir Póliza de Seguro</>
+                )}
               </h3>
             </div>
             <form onSubmit={handleSave} className="p-6 space-y-4">
@@ -394,13 +424,18 @@ export default function InsurancesPage() {
                   onChange={handleFileChange}
                   className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2 text-sm"
                 />
-                <p className="text-xs text-gray-500 mt-1">Sube el PDF para que el asistente pueda leerlo.</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {editingInsuranceId ? "Sube un nuevo archivo solo si quieres reemplazar el actual." : "Sube el PDF para que el asistente pueda leerlo."}
+                </p>
               </div>
 
               <div className="pt-4 flex justify-end gap-3 border-t border-gray-100">
                 <button 
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={() => {
+                    setIsModalOpen(false);
+                    setEditingInsuranceId(null);
+                  }}
                   className="px-4 py-2 text-gray-600 hover:bg-gray-50 rounded-lg font-medium"
                 >
                   Cancelar
@@ -411,7 +446,7 @@ export default function InsurancesPage() {
                   className="px-4 py-2 bg-black hover:bg-gray-800 text-white rounded-lg font-medium flex items-center gap-2 disabled:opacity-50"
                 >
                   {isUploading ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                  {isUploading ? 'Guardando...' : 'Guardar Seguro'}
+                  {isUploading ? 'Guardando...' : (editingInsuranceId ? 'Actualizar' : 'Guardar')}
                 </button>
               </div>
             </form>
