@@ -36,10 +36,10 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const cookieStore = await cookies();
-    const companyId = cookieStore.get('craze_selected_company')?.value || 'CRAZE';
+    const defaultCompany = cookieStore.get('craze_selected_company')?.value || 'CRAZE';
     
     const body = await req.json();
-    const { description, startDate, endDate, fileName, fileBase64 } = body;
+    const { companyId = defaultCompany, description, startDate, endDate, fileName, fileBase64 } = body;
 
     if (!description || !startDate || !endDate) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });

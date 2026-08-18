@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { ShieldCheck, Plus, FileText, Download, Trash2, Send, Bot, User as UserIcon, Loader2, Save } from 'lucide-react';
-import { useCompany } from '@/contexts/CompanyContext';
+import { useCompany, COMPANIES } from '@/contexts/CompanyContext';
 
 interface Insurance {
   id: number;
@@ -34,6 +34,7 @@ export default function InsurancesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [formData, setFormData] = useState({
+    companyId: selectedCompany || 'CRAZE',
     description: '',
     startDate: '',
     endDate: '',
@@ -44,6 +45,12 @@ export default function InsurancesPage() {
   useEffect(() => {
     if (selectedCompany) fetchInsurances();
   }, [selectedCompany]);
+
+  useEffect(() => {
+    if (isModalOpen) {
+      setFormData(prev => ({ ...prev, companyId: selectedCompany || 'CRAZE' }));
+    }
+  }, [isModalOpen, selectedCompany]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -98,7 +105,7 @@ export default function InsurancesPage() {
 
       if (res.ok) {
         setIsModalOpen(false);
-        setFormData({ description: '', startDate: '', endDate: '', fileName: '', fileBase64: '' });
+        setFormData({ companyId: selectedCompany || 'CRAZE', description: '', startDate: '', endDate: '', fileName: '', fileBase64: '' });
         fetchInsurances();
       } else {
         const err = await res.json();
@@ -208,16 +215,38 @@ export default function InsurancesPage() {
             ) : (
               <div className="space-y-3">
                 {insurances.map(policy => {
-                  const isActive = new Date() >= new Date(policy.startDate) && new Date() <= new Date(policy.endDate);
+                  const today = new Date();
+                  const end = new Date(policy.endDate);
+                  const start = new Date(policy.startDate);
+                  const isActive = today >= start && today <= end;
+                  
+                  // Check if expiring in less than 3 months
+                  const threeMonthsFromNow = new Date();
+                  threeMonthsFromNow.setMonth(today.getMonth() + 3);
+                  const isExpiringSoon = isActive && end <= threeMonthsFromNow;
+
+                  let statusText = 'CADUCADO';
+                  let statusColor = 'bg-red-100 text-red-700';
+                  
+                  if (isActive) {
+                    if (isExpiringSoon) {
+                      statusText = 'RENOVAR PRONTO';
+                      statusColor = 'bg-red-100 text-red-700';
+                    } else {
+                      statusText = 'ACTIVO';
+                      statusColor = 'bg-green-100 text-green-700';
+                    }
+                  }
+
                   return (
                     <div key={policy.id} className="p-4 border border-gray-100 rounded-xl hover:shadow-md transition-shadow bg-white flex items-center justify-between group">
                       <div>
                         <h3 className="font-bold text-gray-900">{policy.description}</h3>
                         <p className="text-sm text-gray-500 mt-1">
-                          {new Date(policy.startDate).toLocaleDateString()} - {new Date(policy.endDate).toLocaleDateString()}
+                          {start.toLocaleDateString()} - {end.toLocaleDateString()}
                         </p>
-                        <span className={`inline-block mt-2 px-2 py-0.5 rounded text-xs font-bold ${isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                          {isActive ? 'ACTIVO' : 'CADUCADO'}
+                        <span className={`inline-block mt-2 px-2 py-0.5 rounded text-xs font-bold ${statusColor}`}>
+                          {statusText}
                         </span>
                       </div>
                       <div className="flex gap-2">
@@ -311,6 +340,19 @@ export default function InsurancesPage() {
               </h3>
             </div>
             <form onSubmit={handleSave} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-600 mb-1">Empresa</label>
+                <select
+                  value={formData.companyId}
+                  onChange={e => setFormData({...formData, companyId: e.target.value})}
+                  className="w-full bg-white border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  required
+                >
+                  {COMPANIES.map(comp => (
+                    <option key={comp} value={comp}>{comp}</option>
+                  ))}
+                </select>
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-600 mb-1">Descripción / Nombre</label>
                 <input 
