@@ -38,30 +38,25 @@ Si alguna fecha no aparece, intenta deducirla o déjala en blanco.
     
     for (const att of attachments) {
       if (att.fileName?.toLowerCase().endsWith('.pdf')) {
-        if (att.fileBase64) {
-          parts.push({
-            inlineData: {
-              data: att.fileBase64.split(',')[1] || att.fileBase64,
-              mimeType: 'application/pdf'
-            }
-          });
+        let base64Data = "";
+        if (att.fileData) {
+          base64Data = att.fileData.split(',')[1] || att.fileData;
         } else if (att.fileUrl) {
-          try {
-            const fileRes = await fetch(att.fileUrl);
-            if (fileRes.ok) {
-              const arrayBuffer = await fileRes.arrayBuffer();
-              const base64 = Buffer.from(arrayBuffer).toString('base64');
-              parts.push({
-                inlineData: {
-                  data: base64,
-                  mimeType: 'application/pdf'
-                }
-              });
-            }
-          } catch (e) {
-            console.error('Error fetching fileUrl:', att.fileUrl, e);
-          }
+          const fileRes = await fetch(att.fileUrl);
+          const arrayBuffer = await fileRes.arrayBuffer();
+          base64Data = Buffer.from(arrayBuffer).toString('base64');
+        } else if (att.fileBase64) {
+          base64Data = att.fileBase64.split(',')[1] || att.fileBase64;
+        } else {
+          continue;
         }
+
+        parts.push({
+          inlineData: {
+            data: base64Data,
+            mimeType: 'application/pdf'
+          }
+        });
       }
     }
 

@@ -101,13 +101,17 @@ export default function InsurancesPage() {
 
     try {
       setIsExtracting(true);
-      // 1. Upload all files to Vercel Blob directly
-      const uploadPromises = validFiles.map(async file => {
-        const blob = await upload(file.name, file, {
-          access: 'public',
-          handleUploadUrl: '/api/upload',
+      // 1. Read files as Base64 to bypass Vercel Blob entirely
+      const uploadPromises = validFiles.map(file => {
+        return new Promise<{fileName: string, fileData: string}>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const base64Data = (reader.result as string).split(',')[1];
+            resolve({ fileName: file.name, fileData: base64Data });
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
         });
-        return { fileName: blob.pathname, fileUrl: blob.url };
       });
 
       const uploadedFiles = await Promise.all(uploadPromises);
