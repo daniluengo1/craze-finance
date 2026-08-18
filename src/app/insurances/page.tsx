@@ -97,7 +97,10 @@ export default function InsurancesPage() {
 
     setIsExtracting(true);
     
+    let newAttachments = [...(formData.attachments || [])];
+
     try {
+      setIsExtracting(true);
       // 1. Upload all files to Vercel Blob directly
       const uploadPromises = validFiles.map(async file => {
         const blob = await upload(file.name, file, {
@@ -108,10 +111,17 @@ export default function InsurancesPage() {
       });
 
       const uploadedFiles = await Promise.all(uploadPromises);
-      const newAttachments = [...(formData.attachments || []), ...uploadedFiles];
+      newAttachments = [...newAttachments, ...uploadedFiles];
       
       setFormData(prev => ({ ...prev, attachments: newAttachments }));
+    } catch (error: any) {
+      console.error("Error al subir a Vercel Blob:", error);
+      alert(`Error en paso 1 (Subiendo a Blob): ${error?.message || 'Fallo desconocido'}`);
+      setIsExtracting(false);
+      return; // Stop here if upload fails
+    }
 
+    try {
       // 2. Call Extract API with the URLs
       const res = await fetch('/api/insurances/extract', {
         method: 'POST',
@@ -127,10 +137,12 @@ export default function InsurancesPage() {
           startDate: data.startDate || prev.startDate,
           endDate: data.endDate || prev.endDate
         }));
+      } else {
+        alert(`Error en paso 2 (Extracción): El servidor devolvió status ${res.status}`);
       }
     } catch (error: any) {
-      console.error("Error al extraer datos:", error);
-      alert(`Error al subir los archivos o extraer datos: ${error?.message || 'Fallo desconocido'}`);
+      console.error("Error al extraer datos con Gemini:", error);
+      alert(`Error en paso 2 (Llamada a Gemini): ${error?.message || 'Fallo desconocido'}`);
     } finally {
       setIsExtracting(false);
     }
