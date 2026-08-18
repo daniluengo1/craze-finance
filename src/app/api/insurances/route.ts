@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import prisma from '@/lib/prisma';
-const pdfParse = require('pdf-parse');
 import { logAction } from '@/lib/logger';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request) {
   try {
@@ -49,6 +50,7 @@ export async function POST(req: Request) {
     // If there is a PDF file, try to extract text from it
     if (fileBase64 && fileName?.toLowerCase().endsWith('.pdf')) {
       try {
+        const pdfParse = require('pdf-parse');
         const base64Data = fileBase64.split(',')[1] || fileBase64;
         const buffer = Buffer.from(base64Data, 'base64');
         const pdfData = await pdfParse(buffer);
