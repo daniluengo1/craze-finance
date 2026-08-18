@@ -128,9 +128,9 @@ export default function InsurancesPage() {
           endDate: data.endDate || prev.endDate
         }));
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error al extraer datos:", error);
-      alert('Error al subir los archivos o extraer datos. Comprueba la configuración de Vercel Blob.');
+      alert(`Error al subir los archivos o extraer datos: ${error?.message || 'Fallo desconocido'}`);
     } finally {
       setIsExtracting(false);
     }

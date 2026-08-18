@@ -10,7 +10,6 @@ export async function POST(request: Request): Promise<NextResponse> {
       request,
       onBeforeGenerateToken: async (pathname) => {
         return {
-          allowedContentTypes: ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'],
           tokenPayload: JSON.stringify({}),
         };
       },
