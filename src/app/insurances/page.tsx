@@ -142,7 +142,9 @@ export default function InsurancesPage() {
           endDate: data.endDate || prev.endDate
         }));
       } else {
-        alert(`Error en paso 2 (Extracción): El servidor devolvió status ${res.status}`);
+        const errorData = await res.json().catch(() => null);
+        const errorMessage = errorData?.error || 'Error desconocido';
+        alert(`Error en paso 2 (Extracción): El servidor devolvió status ${res.status}. Detalles: ${errorMessage}`);
       }
     } catch (error: any) {
       console.error("Error al extraer datos con Gemini:", error);
