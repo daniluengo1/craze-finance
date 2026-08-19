@@ -180,6 +180,21 @@ model InsurancePolicy {
   updatedAt   DateTime @updatedAt
 }
 
+model CustomerContract {
+  id            Int      @id @default(autoincrement())
+  companyId     String
+  clientName    String
+  description   String
+  startDate     DateTime
+  endDate       DateTime
+  fileName      String?
+  fileUrl       String?
+  extractedText String?
+  attachments   Json?    @default("[]")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
 model User {
   id           Int      @id @default(autoincrement())
   username     String   @unique
