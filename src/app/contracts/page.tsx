@@ -5,9 +5,10 @@ import { ShieldCheck, Plus, FileText, Download, Trash2, Send, Bot, User as UserI
 import { useCompany, COMPANIES } from '@/contexts/CompanyContext';
 import { upload } from '@vercel/blob/client';
 
-interface Insurance {
+interface Contract {
   id: number;
   companyId: string;
+  clientName: string;
   description: string;
   startDate: string;
   endDate: string;
@@ -21,14 +22,14 @@ interface ChatMessage {
   content: string;
 }
 
-export default function InsurancesPage() {
+export default function ContractsPage() {
   const { selectedCompany } = useCompany();
-  const [insurances, setInsurances] = useState<Insurance[]>([]);
+  const [contracts, setContracts] = useState<Contract[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Chat state
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: 'bot', content: '¡Hola! Soy tu asistente de seguros. Pregúntame sobre coberturas, condiciones o cualquier duda que tengas sobre tus pólizas activas.' }
+    { role: 'bot', content: '¡Hola! Soy tu asistente de contratos. Pregúntame sobre cláusulas, condiciones o cualquier duda que tengas sobre los contratos de clientes.' }
   ]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
@@ -37,9 +38,10 @@ export default function InsurancesPage() {
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [editingInsuranceId, setEditingInsuranceId] = useState<number | null>(null);
+  const [editingContractId, setEditingContractId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     companyId: (selectedCompany && selectedCompany !== 'ALL') ? selectedCompany : 'CRAZE',
+    clientName: '',
     description: '',
     startDate: '',
     endDate: '',
@@ -51,7 +53,7 @@ export default function InsurancesPage() {
   const [isExtracting, setIsExtracting] = useState(false);
 
   useEffect(() => {
-    if (selectedCompany) fetchInsurances();
+    if (selectedCompany) fetchContracts();
   }, [selectedCompany]);
 
   useEffect(() => {
@@ -64,12 +66,12 @@ export default function InsurancesPage() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const fetchInsurances = async () => {
+  const fetchContracts = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/insurances');
+      const res = await fetch('/api/contracts');
       const data = await res.json();
-      setInsurances(Array.isArray(data) ? data : []);
+      setContracts(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error(e);
     } finally {
@@ -124,7 +126,7 @@ export default function InsurancesPage() {
 
     try {
       // 2. Call Extract API with the URLs
-      const res = await fetch('/api/insurances/extract', {
+      const res = await fetch('/api/contracts/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ attachments: newAttachments })
@@ -134,6 +136,7 @@ export default function InsurancesPage() {
         const data = await res.json();
         setFormData(prev => ({
           ...prev,
+          clientName: data.clientName || prev.clientName,
           description: data.description || prev.description,
           startDate: data.startDate || prev.startDate,
           endDate: data.endDate || prev.endDate
@@ -160,14 +163,14 @@ export default function InsurancesPage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.description || !formData.startDate || !formData.endDate) {
+    if (!formData.clientName || !formData.description || !formData.startDate || !formData.endDate) {
       return alert('Rellena los campos obligatorios');
     }
 
     setIsUploading(true);
     try {
-      const url = editingInsuranceId ? `/api/insurances/${editingInsuranceId}` : '/api/insurances';
-      const method = editingInsuranceId ? 'PUT' : 'POST';
+      const url = editingContractId ? `/api/contracts/${editingContractId}` : '/api/contracts';
+      const method = editingContractId ? 'PUT' : 'POST';
 
       const res = await fetch(url, {
         method,
@@ -177,9 +180,9 @@ export default function InsurancesPage() {
 
       if (res.ok) {
         setIsModalOpen(false);
-        setEditingInsuranceId(null);
-        setFormData({ companyId: (selectedCompany && selectedCompany !== 'ALL') ? selectedCompany : 'CRAZE', description: '', startDate: '', endDate: '', fileName: '', fileBase64: '', fileUrl: '', attachments: [] });
-        fetchInsurances();
+        setEditingContractId(null);
+        setFormData({ companyId: (selectedCompany && selectedCompany !== 'ALL') ? selectedCompany : 'CRAZE', clientName: '', description: '', startDate: '', endDate: '', fileName: '', fileBase64: '', fileUrl: '', attachments: [] });
+        fetchContracts();
       } else {
         if (res.status === 413) {
           alert('Error: El archivo es demasiado grande para ser procesado por el servidor.');
@@ -200,10 +203,10 @@ export default function InsurancesPage() {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm('¿Estás seguro de eliminar este seguro?')) return;
+    if (!confirm('¿Estás contrato de eliminar este contrato?')) return;
     try {
-      const res = await fetch(`/api/insurances/${id}`, { method: 'DELETE' });
-      if (res.ok) fetchInsurances();
+      const res = await fetch(`/api/contracts/${id}`, { method: 'DELETE' });
+      if (res.ok) fetchContracts();
     } catch (e) {
       alert('Error de conexión');
     }
@@ -211,7 +214,7 @@ export default function InsurancesPage() {
 
   const handleDownload = async (id: number, legacyFileName: string | null) => {
     try {
-      const res = await fetch(`/api/insurances/${id}`);
+      const res = await fetch(`/api/contracts/${id}`);
       const data = await res.json();
       
       let parsedAttachments: any[] = [];
@@ -250,7 +253,7 @@ export default function InsurancesPage() {
       });
 
       if (downloadedCount === 0) {
-        alert('Este seguro no tiene archivos adjuntos');
+        alert('Este contrato no tiene archivos adjuntos');
       }
     } catch (e) {
       alert('Error al descargar');
@@ -267,7 +270,7 @@ export default function InsurancesPage() {
     setChatLoading(true);
 
     try {
-      const res = await fetch('/api/insurances/bot', {
+      const res = await fetch('/api/contracts/bot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: userMessage })
@@ -293,42 +296,42 @@ export default function InsurancesPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
             <ShieldCheck className="text-black w-8 h-8" /> 
-            Gestión de Seguros
+            Gestión de Contratos
           </h1>
-          <p className="text-gray-500 mt-1">Controla las pólizas de {selectedCompany} y consulta dudas con la IA</p>
+          <p className="text-gray-500 mt-1">Controla las contratos de {selectedCompany} y consulta dudas con la IA</p>
         </div>
         <button 
           onClick={() => {
-            setEditingInsuranceId(null);
+            setEditingContractId(null);
             setIsModalOpen(true);
           }}
           className="flex items-center gap-2 px-5 py-2.5 bg-black hover:bg-gray-800 text-white rounded-lg shadow-lg font-medium transition-colors"
         >
-          <Plus size={18} /> Añadir Seguro
+          <Plus size={18} /> Añadir Contrato
         </button>
       </div>
 
       <div className="flex gap-6 flex-1 min-h-0">
         
-        {/* Lado Izquierdo: Lista de Seguros */}
+        {/* Lado Izquierdo: Lista de Contratos */}
         <div className="w-1/2 flex flex-col bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
           <div className="p-4 border-b border-gray-100 bg-gray-50">
             <h2 className="font-bold text-gray-800 flex items-center gap-2">
               <FileText size={18} className="text-blue-600" />
-              Pólizas Activas
+              Contratos Activas
             </h2>
           </div>
           
           <div className="flex-1 overflow-y-auto p-4">
             {loading ? (
-              <div className="text-center py-10 text-gray-400">Cargando pólizas...</div>
-            ) : insurances.length === 0 ? (
+              <div className="text-center py-10 text-gray-400">Cargando contratos...</div>
+            ) : contracts.length === 0 ? (
               <div className="text-center py-10 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
-                No hay seguros registrados para {selectedCompany}.
+                No hay contratos registrados para {selectedCompany}.
               </div>
             ) : (
               <div className="space-y-3">
-                {insurances.map(policy => {
+                {contracts.map(policy => {
                   const today = new Date();
                   const end = new Date(policy.endDate);
                   const start = new Date(policy.startDate);
@@ -356,7 +359,7 @@ export default function InsurancesPage() {
                     <div key={policy.id} className="p-4 border border-gray-100 rounded-xl hover:shadow-md transition-shadow bg-white flex items-center justify-between group">
                       <div>
                         <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                          {policy.description}
+                          {policy.clientName} - {policy.description}
                           <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full font-medium">
                             {policy.companyId}
                           </span>
@@ -381,6 +384,7 @@ export default function InsurancesPage() {
                           onClick={() => {
                             setFormData({
                               companyId: selectedCompany || 'CRAZE',
+                              clientName: policy.clientName,
                               description: policy.description,
                               startDate: policy.startDate.split('T')[0],
                               endDate: policy.endDate.split('T')[0],
@@ -389,11 +393,11 @@ export default function InsurancesPage() {
                               fileUrl: '',
                               attachments: policy.attachments || []
                             });
-                            setEditingInsuranceId(policy.id);
+                            setEditingContractId(policy.id);
                             setIsModalOpen(true);
                           }}
                           className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
-                          title="Editar Seguro"
+                          title="Editar Contrato"
                         >
                           <Edit2 size={18} />
                         </button>
@@ -409,7 +413,7 @@ export default function InsurancesPage() {
                         <button 
                           onClick={() => handleDelete(policy.id)}
                           className="p-2 text-red-500 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
-                          title="Eliminar Seguro"
+                          title="Eliminar Contrato"
                         >
                           <Trash2 size={18} />
                         </button>
@@ -427,9 +431,9 @@ export default function InsurancesPage() {
           <div className="p-4 border-b border-gray-200 bg-white flex items-center justify-between">
             <h2 className="font-bold text-gray-800 flex items-center gap-2">
               <Bot size={20} className="text-purple-600" />
-              Asistente de Seguros (IA)
+              Asistente de Contratos (IA)
             </h2>
-            <span className="text-xs font-medium px-2 py-1 bg-purple-100 text-purple-700 rounded-full">Lee tus pólizas (PDF)</span>
+            <span className="text-xs font-medium px-2 py-1 bg-purple-100 text-purple-700 rounded-full">Lee tus contratos (PDF)</span>
           </div>
           
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -449,7 +453,7 @@ export default function InsurancesPage() {
                   <Bot size={16} />
                 </div>
                 <div className="p-4 bg-white border border-gray-200 rounded-2xl rounded-tl-sm shadow-sm flex items-center gap-2 text-sm text-gray-500">
-                  <Loader2 size={14} className="animate-spin" /> Consultando pólizas...
+                  <Loader2 size={14} className="animate-spin" /> Consultando contratos...
                 </div>
               </div>
             )}
@@ -462,7 +466,7 @@ export default function InsurancesPage() {
                 type="text" 
                 value={chatInput}
                 onChange={e => setChatInput(e.target.value)}
-                placeholder="Ej: ¿El seguro cubre robo en los almacenes?"
+                placeholder="Ej: ¿El contrato cubre robo en los almacenes?"
                 className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 text-sm"
               />
               <button 
@@ -477,16 +481,16 @@ export default function InsurancesPage() {
         </div>
       </div>
 
-      {/* Modal de Nuevo Seguro */}
+      {/* Modal de Nuevo Contrato */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-center">
           <div className="bg-white border border-gray-200 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
             <div className="p-6 border-b border-gray-200">
               <h3 className="text-xl font-bold flex items-center gap-2">
-                {editingInsuranceId ? (
-                  <><Edit2 className="text-indigo-600" /> Editar/Renovar Póliza</>
+                {editingContractId ? (
+                  <><Edit2 className="text-indigo-600" /> Editar/Renovar Contrato</>
                 ) : (
-                  <><Plus className="text-indigo-600" /> Añadir Póliza de Seguro</>
+                  <><Plus className="text-indigo-600" /> Añadir Contrato de Contrato</>
                 )}
               </h3>
             </div>
@@ -505,13 +509,24 @@ export default function InsurancesPage() {
                 </select>
               </div>
               <div>
+                <label className="block text-sm font-medium text-gray-600 mb-1">Nombre del Cliente</label>
+                <input 
+                  type="text" 
+                  value={formData.clientName}
+                  onChange={e => setFormData({...formData, clientName: e.target.value})}
+                  className="w-full bg-white border border-gray-200 rounded-lg px-4 py-2"
+                  placeholder="Ej: Tennistech SL"
+                  required
+                />
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-gray-600 mb-1">Descripción / Nombre</label>
                 <input 
                   type="text" 
                   value={formData.description}
                   onChange={e => setFormData({...formData, description: e.target.value})}
                   className="w-full bg-white border border-gray-200 rounded-lg px-4 py-2"
-                  placeholder="Ej: Seguro de RC Plus"
+                  placeholder="Ej: Contrato de RC Plus"
                   required
                 />
               </div>
@@ -544,7 +559,7 @@ export default function InsurancesPage() {
                   {isExtracting && <Loader2 className="h-5 w-5 animate-spin text-blue-600" />}
                 </div>
                 {isExtracting ? (
-                  <p className="text-xs text-blue-600 font-medium">✨ Leyendo pólizas con IA...</p>
+                  <p className="text-xs text-blue-600 font-medium">✨ Leyendo contratos con IA...</p>
                 ) : (
                   <p className="text-xs text-gray-500">Puedes seleccionar varios PDFs a la vez. La IA los leerá todos para extraer la información.</p>
                 )}
@@ -580,7 +595,7 @@ export default function InsurancesPage() {
                   type="button"
                   onClick={() => {
                     setIsModalOpen(false);
-                    setEditingInsuranceId(null);
+                    setEditingContractId(null);
                   }}
                   className="px-4 py-2 text-gray-600 hover:bg-gray-50 rounded-lg font-medium"
                 >
@@ -592,7 +607,7 @@ export default function InsurancesPage() {
                   className="px-4 py-2 bg-black hover:bg-gray-800 text-white rounded-lg font-medium flex items-center gap-2 disabled:opacity-50"
                 >
                   {isUploading ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                  {isUploading ? 'Guardando...' : (editingInsuranceId ? 'Actualizar' : 'Guardar')}
+                  {isUploading ? 'Guardando...' : (editingContractId ? 'Actualizar' : 'Guardar')}
                 </button>
               </div>
             </form>
