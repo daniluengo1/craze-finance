@@ -101,17 +101,13 @@ export default function InsurancesPage() {
 
     try {
       setIsExtracting(true);
-      // 1. Read files as Base64 to bypass Vercel Blob entirely
-      const uploadPromises = validFiles.map(file => {
-        return new Promise<{fileName: string, fileData: string}>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const base64Data = (reader.result as string).split(',')[1];
-            resolve({ fileName: file.name, fileData: base64Data });
-          };
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
+      // 1. Upload files to Vercel Blob
+      const uploadPromises = validFiles.map(async (file) => {
+        const newBlob = await upload(file.name, file, {
+          access: 'public',
+          handleUploadUrl: '/api/upload',
         });
+        return { fileName: file.name, fileUrl: newBlob.url };
       });
 
       const uploadedFiles = await Promise.all(uploadPromises);
@@ -245,6 +241,9 @@ export default function InsurancesPage() {
           a.href = base64Str.startsWith('data:') ? base64Str : `data:application/pdf;base64,${base64Str}`;
           a.download = att.fileName;
           a.click();
+          downloadedCount++;
+        } else if (att.fileUrl) {
+          window.open(att.fileUrl, '_blank');
           downloadedCount++;
         }
       });
