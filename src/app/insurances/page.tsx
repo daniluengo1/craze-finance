@@ -39,7 +39,7 @@ export default function InsurancesPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [editingInsuranceId, setEditingInsuranceId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
-    companyId: selectedCompany || 'CRAZE',
+    companyId: (selectedCompany && selectedCompany !== 'ALL') ? selectedCompany : 'CRAZE',
     description: '',
     startDate: '',
     endDate: '',
@@ -56,7 +56,7 @@ export default function InsurancesPage() {
 
   useEffect(() => {
     if (isModalOpen) {
-      setFormData(prev => ({ ...prev, companyId: selectedCompany || 'CRAZE' }));
+      setFormData(prev => ({ ...prev, companyId: (selectedCompany && selectedCompany !== 'ALL') ? selectedCompany : 'CRAZE' }));
     }
   }, [isModalOpen, selectedCompany]);
 
@@ -181,7 +181,7 @@ export default function InsurancesPage() {
       if (res.ok) {
         setIsModalOpen(false);
         setEditingInsuranceId(null);
-        setFormData({ companyId: selectedCompany || 'CRAZE', description: '', startDate: '', endDate: '', fileName: '', fileBase64: '', fileUrl: '', attachments: [] });
+        setFormData({ companyId: (selectedCompany && selectedCompany !== 'ALL') ? selectedCompany : 'CRAZE', description: '', startDate: '', endDate: '', fileName: '', fileBase64: '', fileUrl: '', attachments: [] });
         fetchInsurances();
       } else {
         if (res.status === 413) {
@@ -499,7 +499,7 @@ export default function InsurancesPage() {
                   className="w-full bg-white border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                   required
                 >
-                  {COMPANIES.map(comp => (
+                  {COMPANIES.filter(c => c !== 'ALL').map(comp => (
                     <option key={comp} value={comp}>{comp}</option>
                   ))}
                 </select>

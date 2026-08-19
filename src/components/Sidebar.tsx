@@ -68,7 +68,7 @@ export default function Sidebar({ permissions = [], username = '' }: { permissio
             className="w-full bg-gray-100 border-none text-sm font-semibold rounded-md px-3 py-2 text-gray-900 focus:ring-2 focus:ring-black outline-none cursor-pointer"
           >
             {COMPANIES.map(comp => (
-              <option key={comp} value={comp}>{comp}</option>
+              <option key={comp} value={comp}>{comp === 'ALL' ? 'TODAS LAS EMPRESAS' : comp}</option>
             ))}
           </select>
         </div>

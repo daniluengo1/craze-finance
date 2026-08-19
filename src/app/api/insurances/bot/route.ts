@@ -23,9 +23,11 @@ export async function POST(req: Request) {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
 
+    const whereClause = companyId === 'ALL' ? {} : { companyId };
+    
     // Fetch all insurances for this company to provide context
     const policies = await prisma.insurancePolicy.findMany({
-      where: { companyId },
+      where: whereClause,
     });
 
     if (policies.length === 0) {

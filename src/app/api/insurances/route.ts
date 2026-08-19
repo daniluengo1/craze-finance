@@ -7,12 +7,17 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request) {
   try {
+    const { searchParams } = new URL(req.url);
+    const companyId = searchParams.get('companyId');
     const cookieStore = await cookies();
-    const companyId = cookieStore.get('craze_selected_company')?.value || 'CRAZE';
-    
+    const defaultCompany = cookieStore.get('craze_selected_company')?.value || 'CRAZE';
+    const targetCompany = companyId || defaultCompany;
+
+    const whereClause = targetCompany === 'ALL' ? {} : { companyId: targetCompany };
+
     // Do not return the massive base64 file data or extracted text to the client list view
     const policies = await prisma.insurancePolicy.findMany({
-      where: { companyId },
+      where: whereClause,
       orderBy: { endDate: 'asc' },
       select: {
         id: true,

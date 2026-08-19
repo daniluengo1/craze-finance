@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
 export const COMPANIES = [
+  'ALL',
   'CRAZE',
   'Craze Iberia SL',
   'Craze UK',
