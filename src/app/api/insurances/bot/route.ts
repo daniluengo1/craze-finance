@@ -21,7 +21,7 @@ export async function POST(req: Request) {
     }
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
 
     // Fetch all insurances for this company to provide context
     const policies = await prisma.insurancePolicy.findMany({
@@ -91,10 +91,11 @@ Archivos adjuntos: ${attachmentsList.length > 0 ? attachmentsList.join(', ') : '
       // Attach all new attachments
       for (const att of parsedAttachments) {
         if (att.fileName?.toLowerCase().endsWith('.pdf')) {
-          if (att.fileBase64) {
+          const base64Data = att.fileData || att.fileBase64;
+          if (base64Data) {
             parts.push({
               inlineData: {
-                data: att.fileBase64.split(',')[1] || att.fileBase64,
+                data: base64Data.split(',')[1] || base64Data,
                 mimeType: 'application/pdf'
               }
             });
