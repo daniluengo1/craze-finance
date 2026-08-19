@@ -47,7 +47,7 @@ DATOS BÁSICOS DE LAS CONTRATOS:
 
     let index = 0;
     for (const policy of policies) {
-      let attachmentsList = [];
+      let attachmentsList: string[] = [];
       
       let parsedAttachments: any[] = [];
       if (policy.attachments && typeof policy.attachments === 'string') {
