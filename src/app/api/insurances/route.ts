@@ -39,7 +39,12 @@ export async function POST(req: Request) {
     const defaultCompany = cookieStore.get('craze_selected_company')?.value || 'CRAZE';
     
     const body = await req.json();
-    const { companyId = defaultCompany, description, startDate, endDate, fileName, fileBase64, fileUrl, attachments } = body;
+    let { companyId = defaultCompany, description, startDate, endDate, fileName, fileBase64, fileUrl, attachments } = body;
+
+    // If fileName is empty but we have attachments, use the first attachment's name so the UI knows there is a file
+    if (!fileName && attachments && attachments.length > 0) {
+      fileName = attachments[0].fileName;
+    }
 
     if (!description || !startDate || !endDate) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });

@@ -48,7 +48,11 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     const defaultCompanyId = cookieStore.get('craze_selected_company')?.value || 'CRAZE';
     
     const body = await req.json();
-    const { companyId = defaultCompanyId, description, startDate, endDate, fileName, fileBase64, fileUrl, attachments } = body;
+    let { companyId = defaultCompanyId, description, startDate, endDate, fileName, fileBase64, fileUrl, attachments } = body;
+
+    if (!fileName && attachments && attachments.length > 0) {
+      fileName = attachments[0].fileName;
+    }
 
     if (!description || !startDate || !endDate) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });

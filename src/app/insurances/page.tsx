@@ -239,9 +239,10 @@ export default function InsurancesPage() {
 
       // Download all attachments
       parsedAttachments.forEach(att => {
-        if (att.fileBase64 && att.fileName) {
+        const base64Str = att.fileData || att.fileBase64;
+        if (base64Str && att.fileName) {
           const a = document.createElement('a');
-          a.href = att.fileBase64;
+          a.href = base64Str.startsWith('data:') ? base64Str : `data:application/pdf;base64,${base64Str}`;
           a.download = att.fileName;
           a.click();
           downloadedCount++;
