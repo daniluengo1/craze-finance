@@ -65,7 +65,6 @@ export async function POST(req: Request) {
         startDate: new Date(startDate),
         endDate: new Date(endDate),
         fileName,
-        fileBase64,
         fileUrl,
         extractedText,
         attachments: attachments || []

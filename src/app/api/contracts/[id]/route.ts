@@ -10,10 +10,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   try {
     const { id } = await params;
     
-    // We only fetch this when downloading the file to avoid loading big base64 strings in the list view
+    // We only fetch this when downloading the file
     const policy = await prisma.customerContract.findUnique({
       where: { id: parseInt(id) },
-      select: { fileName: true, fileBase64: true }
+      select: { fileName: true, fileUrl: true, attachments: true }
     });
 
     if (!policy) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -65,11 +65,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       endDate: new Date(endDate)
     };
 
-    // If a new file is uploaded for backwards compatibility, update it
-    if (fileBase64 && fileName) {
-      updateData.fileName = fileName;
-      updateData.fileBase64 = fileBase64;
-    }
+    // We no longer save base64 files in the DB
     
     if (fileUrl && fileName) {
       updateData.fileName = fileName;
