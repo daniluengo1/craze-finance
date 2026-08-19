@@ -273,6 +273,15 @@ export default function InsurancesPage() {
         body: JSON.stringify({ message: userMessage })
       });
       
+      if (!res.ok) {
+        const textError = await res.text();
+        console.error("Bot error response:", res.status, textError);
+        let parsedErr = "Error desconocido";
+        try { parsedErr = JSON.parse(textError).error || textError; } catch(e) { parsedErr = textError.substring(0, 100); }
+        setMessages(prev => [...prev, { role: 'bot', content: `❌ Error del servidor (${res.status}): ${parsedErr}` }]);
+        return;
+      }
+
       const data = await res.json();
       
       if (data.error) {
@@ -280,8 +289,9 @@ export default function InsurancesPage() {
       } else {
         setMessages(prev => [...prev, { role: 'bot', content: data.reply }]);
       }
-    } catch (e) {
-      setMessages(prev => [...prev, { role: 'bot', content: '❌ Error de conexión al consultar al bot.' }]);
+    } catch (e: any) {
+      console.error(e);
+      setMessages(prev => [...prev, { role: 'bot', content: `❌ Error de red/conexión: ${e.message}` }]);
     } finally {
       setChatLoading(false);
     }
