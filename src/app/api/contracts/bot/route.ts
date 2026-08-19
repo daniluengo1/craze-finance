@@ -48,7 +48,6 @@ DATOS BÁSICOS DE LAS CONTRATOS:
     let index = 0;
     for (const policy of policies) {
       let attachmentsList = [];
-      let hasLegacyFile = policy.fileBase64 && policy.fileName?.toLowerCase().endsWith('.pdf');
       
       let parsedAttachments: any[] = [];
       if (policy.attachments && typeof policy.attachments === 'string') {
@@ -57,24 +56,14 @@ DATOS BÁSICOS DE LAS CONTRATOS:
         parsedAttachments = policy.attachments;
       }
 
-      if (hasLegacyFile) attachmentsList.push(policy.fileName);
       parsedAttachments.forEach(att => attachmentsList.push(att.fileName));
 
       contextText += `\n--- CONTRATO ${index + 1} ---
+Cliente: ${policy.clientName}
 Nombre: ${policy.description}
 Válida desde: ${policy.startDate.toLocaleDateString()} hasta ${policy.endDate.toLocaleDateString()}
 Archivos adjuntos: ${attachmentsList.length > 0 ? attachmentsList.join(', ') : 'NO HAY DOCUMENTOS ADJUNTOS'}
 `;
-      
-      // Attach legacy PDF
-      if (hasLegacyFile) {
-        parts.push({
-          inlineData: {
-            data: policy.fileBase64!.split(',')[1] || policy.fileBase64!,
-            mimeType: 'application/pdf'
-          }
-        });
-      }
       
       // Attach new main fileUrl
       if (policy.fileUrl && policy.fileName?.toLowerCase().endsWith('.pdf')) {
