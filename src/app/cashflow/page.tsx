@@ -502,6 +502,8 @@ export default function CashflowPage() {
       }
       setIsModalOpen(false);
       fetchCashflow();
+    } catch (error) {
+      console.error('Failed to save:', error);
     }
   };
 
