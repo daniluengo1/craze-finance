@@ -81,7 +81,7 @@ async function fetchODataAllPages(startUrl: string, accessToken: string): Promis
   return allResults;
 }
 
-export async function syncBusinessCentral(specificCompany?: string, step: 'customers' | 'invoices' | 'vendors' | 'vendorInvoices' | 'all' = 'all') {
+export async function syncBusinessCentral(specificCompany?: string, step: 'customers' | 'invoices' | 'vendors' | 'vendorInvoices' | 'recurring' | 'all' = 'all') {
   const config = await prisma.businessCentralConfig.findUnique({ where: { id: 1 } });
   if (!config || !config.tenantId || !config.clientId || !config.clientSecret) {
     throw new Error('La configuración de Business Central está incompleta. Por favor, rellena todos los campos en Ajustes.');
