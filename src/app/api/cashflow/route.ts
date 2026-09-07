@@ -19,6 +19,7 @@ export async function GET(req: Request) {
       where: { companyId_currencyCode: { companyId, currencyCode: currency } } 
     });
     const INITIAL_BALANCE = config ? config.initialBalance : 0;
+    const INITIAL_BALANCE_DATE = config ? config.updatedAt : new Date('2026-07-29T00:00:00Z');
 
     // 2. Fetch Markant invoices (Grouped by confirmedPaymentDate)
     const markantInvoices = await prisma.invoice.findMany({
@@ -64,7 +65,13 @@ export async function GET(req: Request) {
       include: { customer: true }
     });
 
-    const transferGroups = transferInvoices.reduce((acc: any, inv) => {
+    const groupCompanyNames = ['craze group', 'craze toys', 'craze iberia'];
+    const validTransferInvoices = transferInvoices.filter(inv => {
+      const name = (inv.customer?.name || '').toLowerCase();
+      return !groupCompanyNames.some(gc => name.includes(gc));
+    });
+
+    const transferGroups = validTransferInvoices.reduce((acc: any, inv) => {
       const activeDate = inv.cashflowDate || inv.dueDate;
       const dateStr = activeDate.toISOString().split('T')[0];
       const customerName = inv.customer.name;
@@ -101,8 +108,42 @@ export async function GET(req: Request) {
       isArchived: entry.isArchived
     }));
 
+    // 4.5 Fetch Recurring Payments
+    const recurringPayments = await prisma.recurringPayment.findMany({
+      where: { companyId, currencyCode: currency, isActive: true }
+    });
+    
+    const recurringEntries: any[] = [];
+    const projectionMonths = 12; // Project 12 months into the future
+    const today = new Date();
+    
+    for (const rec of recurringPayments) {
+      if (!rec.activeFromDate || !rec.dayOfMonth) continue;
+      
+      let currentProjDate = new Date(rec.activeFromDate);
+      
+      // Make sure we start from the activeFromDate
+      for (let i = 0; i < projectionMonths; i++) {
+        const projDate = new Date(currentProjDate.getFullYear(), currentProjDate.getMonth() + i, rec.dayOfMonth);
+        
+        // If the projected date is past an endDate (if it exists), stop
+        if (rec.endDate && projDate > rec.endDate) break;
+        
+        recurringEntries.push({
+          id: `recurring-${rec.id}-${projDate.toISOString()}`,
+          date: projDate,
+          description: `(Recurrente) ${rec.description}`,
+          amount: rec.amount || 0,
+          isManual: false,
+          isGroup: false,
+          isRecurring: true
+        });
+      }
+    }
+
     // 5. Combine and sort
-    const allEntries = [...markantEntries, ...transferEntries, ...manualEntries];
+    // NOTA: Markant excluido a petición del usuario.
+    const allEntries = [...transferEntries, ...manualEntries, ...recurringEntries];
     
     // Sort oldest to newest
     allEntries.sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -124,6 +165,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       initialBalance: INITIAL_BALANCE,
+      initialBalanceDate: INITIAL_BALANCE_DATE,
       entries: finalEntries
     });
   } catch (error) {
@@ -185,7 +227,7 @@ export async function PUT(req: Request) {
       const currencyCode = body.currency || 'EUR';
       await prisma.cashflowConfig.upsert({
         where: { companyId_currencyCode: { companyId, currencyCode } },
-        update: { initialBalance: parseFloat(amount) },
+        update: { initialBalance: parseFloat(amount), updatedAt: new Date() },
         create: { companyId, currencyCode, initialBalance: parseFloat(amount) }
       });
       return NextResponse.json({ success: true });

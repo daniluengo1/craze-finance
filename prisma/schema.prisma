@@ -72,11 +72,34 @@ model ApiConfig {
   updatedAt DateTime @updatedAt
 }
 
+model RecurringPayment {
+  id              Int       @id @default(autoincrement())
+  bcCode          String
+  companyId       String
+  description     String
+  frequency       String?
+  startDate       DateTime?
+  endDate         DateTime?
+  
+  // Configured by user in Cashflow
+  isActive        Boolean   @default(false)
+  amount          Float?
+  dayOfMonth      Int?
+  activeFromDate  DateTime?
+  currencyCode    String?
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@unique([companyId, bcCode])
+}
+
 model CashflowConfig {
-  id             Int    @id @default(autoincrement())
-  companyId      String @default("CRAZE")
-  currencyCode   String @default("EUR")
-  initialBalance Float  @default(0)
+  id             Int      @id @default(autoincrement())
+  companyId      String   @default("CRAZE")
+  currencyCode   String   @default("EUR")
+  initialBalance Float    @default(0)
+  updatedAt      DateTime @default(now()) @updatedAt
   
   @@unique([companyId, currencyCode])
 }

@@ -38,7 +38,7 @@ async function fetchODataAllPages(startUrl: string, accessToken: string): Promis
   let nextUrl: string | null = startUrl;
   const allResults: any[] = [];
   let pageCount = 0;
-  const MAX_PAGES = 10; // Hard limit to avoid Vercel timeouts (10 pages * 1000 items = 10,000 items max)
+  const MAX_PAGES = 100; // Increased to 100 to prevent truncating large accounts like Rossman
   
   while (nextUrl && pageCount < MAX_PAGES) {
     pageCount++;
@@ -612,6 +612,58 @@ export async function syncBusinessCentral(specificCompany?: string, step: 'custo
         });
       }
       } // End of vendorInvoices step
+      
+      // 6. Fetch Recurring Payments
+      if (step === 'all' || step === 'recurring') {
+        console.log(`[${exactCompanyName}] Sincronizando Pagos Recurrentes...`);
+        const recurringUrl = `https://api.businesscentral.dynamics.com/v2.0/${config.tenantId}/${config.environment}/ODataV4/Company('${exactCompanyName}')/Recurring_Purchase_Lines_Excel`;
+        try {
+          const allRecurringData = await fetchODataAllPages(recurringUrl, accessToken);
+          const allDbRecurring = await prisma.recurringPayment.findMany({ where: { companyId: exactCompanyName } });
+          const dbRecurringMap = new Map(allDbRecurring.map(r => [r.bcCode, r]));
+
+          const recCreates: any[] = [];
+          const recUpdates: any[] = [];
+
+          for (const rec of allRecurringData) {
+            const code = rec.Code;
+            if (!code) continue;
+
+            const recData = {
+              companyId: exactCompanyName,
+              description: rec.Description || '',
+              currencyCode: rec.Currency_Code || 'EUR'
+            };
+
+            const existingRec = dbRecurringMap.get(code);
+            if (existingRec) {
+              if (
+                existingRec.description !== recData.description ||
+                (existingRec.currencyCode || 'EUR') !== recData.currencyCode
+              ) {
+                recUpdates.push({
+                  where: { id: existingRec.id },
+                  data: recData
+                });
+              }
+            } else {
+              recCreates.push({
+                bcCode: code,
+                ...recData
+              });
+            }
+          }
+
+          if (recCreates.length > 0) {
+            await prisma.recurringPayment.createMany({ data: recCreates, skipDuplicates: true });
+          }
+          if (recUpdates.length > 0) {
+            await chunkedUpdate(recUpdates, (u) => prisma.recurringPayment.update(u));
+          }
+        } catch (err: any) {
+          console.warn(`[${exactCompanyName}] Failed to fetch Recurring Payments: ${err.message}`);
+        }
+      } // End of recurring step
       
     } catch (companyError) {
       console.error(`[${exactCompanyName}] Error during sync:`, companyError);

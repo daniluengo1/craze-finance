@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Edit2, Trash2, RefreshCw, AlertCircle, Save, X, ChevronRight, ChevronDown, Download, Upload, Archive, Send, Briefcase } from 'lucide-react';
+import { Plus, Edit2, Trash2, RefreshCw, AlertCircle, Save, X, ChevronRight, ChevronDown, Download, Upload, Archive, Send, Briefcase, Calendar } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useCompany } from '@/contexts/CompanyContext';
 
@@ -10,6 +10,7 @@ export default function CashflowPage() {
 
   const [entries, setEntries] = useState<any[]>([]);
   const [initialBalance, setInitialBalance] = useState<number>(0);
+  const [initialBalanceDate, setInitialBalanceDate] = useState<string>('29/07/2026');
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -62,6 +63,12 @@ export default function CashflowPage() {
   });
   const [isSendingSpEmail, setIsSendingSpEmail] = useState(false);
   
+  // Recurring Payments
+  const [recurringModalOpen, setRecurringModalOpen] = useState(false);
+  const [recurringPayments, setRecurringPayments] = useState<any[]>([]);
+  const [editingRecurring, setEditingRecurring] = useState<any>(null);
+  const [recurringForm, setRecurringForm] = useState({ amount: '', dayOfMonth: '1', activeFromDate: '' });
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchCashflow = async () => {
@@ -72,6 +79,9 @@ export default function CashflowPage() {
         const data = await res.json();
         setEntries(data.entries || []);
         setInitialBalance(data.initialBalance || 0);
+        if (data.initialBalanceDate) {
+          setInitialBalanceDate(new Date(data.initialBalanceDate).toLocaleDateString('es-ES'));
+        }
       }
       
       // Fetch all balances and exchange rates
@@ -492,9 +502,53 @@ export default function CashflowPage() {
       }
       setIsModalOpen(false);
       fetchCashflow();
-    } catch (error) {
-      console.error('Failed to save:', error);
     }
+  };
+
+  const openRecurringModal = async () => {
+    setRecurringModalOpen(true);
+    fetchRecurringPayments();
+  };
+
+  const fetchRecurringPayments = async () => {
+    try {
+      const res = await fetch('/api/cashflow/recurring');
+      if (res.ok) setRecurringPayments(await res.json());
+    } catch (error) { console.error(error); }
+  };
+
+  const handleSaveRecurring = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const payload = {
+        id: editingRecurring.id,
+        isActive: true,
+        amount: recurringForm.amount,
+        dayOfMonth: recurringForm.dayOfMonth,
+        activeFromDate: recurringForm.activeFromDate,
+        currencyCode: currentCurrency
+      };
+      await fetch('/api/cashflow/recurring', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      setEditingRecurring(null);
+      fetchRecurringPayments();
+      fetchCashflow();
+    } catch (err) { console.error(err); }
+  };
+
+  const handleRemoveRecurring = async (rec: any) => {
+    try {
+      await fetch('/api/cashflow/recurring', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: rec.id, isActive: false })
+      });
+      fetchRecurringPayments();
+      fetchCashflow();
+    } catch (err) { console.error(err); }
   };
 
   return (
@@ -567,9 +621,15 @@ export default function CashflowPage() {
             </button>
             <button 
               onClick={openAddModal}
-              className="flex items-center gap-2 px-4 py-2 bg-black hover:bg-gray-800 text-white text-gray-900 rounded-lg shadow-lg font-medium transition-all text-sm"
+              className="flex items-center gap-2 px-4 py-2 bg-black hover:bg-gray-800 text-white rounded-lg shadow-lg font-medium transition-all text-sm"
             >
               <Plus size={16} /> Añadir Línea
+            </button>
+            <button 
+              onClick={openRecurringModal}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg shadow-lg font-medium transition-all text-sm ml-2"
+            >
+              <Calendar size={16} /> Configurar Recurrentes
             </button>
           </div>
         </div>
@@ -654,7 +714,7 @@ export default function CashflowPage() {
                   <tr className="bg-gray-50/50 border-b-2 border-gray-200 font-medium">
                     <td className="p-4 text-center text-slate-500">-</td>
                     <td className="p-4 text-gray-700 font-semibold">-</td>
-                    <td className="p-4 font-medium text-gray-700 font-semibold">Saldo Inicial (29/07/2026)</td>
+                    <td className="p-4 font-medium text-gray-700 font-semibold">Saldo Inicial ({initialBalanceDate})</td>
                     <td className="p-4 text-right text-gray-700 font-semibold">-</td>
                     <td className={`p-4 text-right group relative flex justify-end items-center gap-2 ${initialBalance <= -1000000 ? 'text-purple-600 font-black text-lg' : initialBalance < 0 ? 'text-red-600 font-bold' : 'text-emerald-600 font-bold'}`}>
                       {isEditingBalance ? (
@@ -717,6 +777,8 @@ export default function CashflowPage() {
                               )}
                               {entry.isManual ? (
                                 <span className="bg-blue-500/20 text-blue-700 font-bold px-1.5 py-0.5 rounded text-[10px] uppercase border border-blue-500/30">Manual</span>
+                              ) : entry.isRecurring ? (
+                                <span className="bg-indigo-500/20 text-indigo-700 font-bold px-1.5 py-0.5 rounded text-[10px] uppercase border border-indigo-500/30">Recurrente</span>
                               ) : (
                                 <span className="bg-teal-500/20 text-teal-700 font-bold px-1.5 py-0.5 rounded text-[10px] uppercase border border-gray-200">Auto</span>
                               )}
@@ -736,12 +798,16 @@ export default function CashflowPage() {
                           </td>
                           <td className="p-4 text-center">
                             <div className="flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button onClick={(e) => { e.stopPropagation(); openEditModal(entry); }} className="p-1.5 text-black hover:bg-blue-400/20 rounded-md transition-colors" title="Editar Fecha/Registro">
-                                <Edit2 size={14} />
-                              </button>
-                              <button onClick={(e) => { e.stopPropagation(); handleArchive(entry); }} className="p-1.5 text-black hover:bg-purple-400/20 rounded-md transition-colors" title={entry.isArchived ? "Restaurar al cashflow" : "Archivar (ocultar del cashflow)"}>
-                                {entry.isArchived ? <RefreshCw size={14} /> : <Archive size={14} />}
-                              </button>
+                              {!entry.isRecurring && (
+                                <>
+                                  <button onClick={(e) => { e.stopPropagation(); openEditModal(entry); }} className="p-1.5 text-black hover:bg-blue-400/20 rounded-md transition-colors" title="Editar Fecha/Registro">
+                                    <Edit2 size={14} />
+                                  </button>
+                                  <button onClick={(e) => { e.stopPropagation(); handleArchive(entry); }} className="p-1.5 text-black hover:bg-purple-400/20 rounded-md transition-colors" title={entry.isArchived ? "Restaurar al cashflow" : "Archivar (ocultar del cashflow)"}>
+                                    {entry.isArchived ? <RefreshCw size={14} /> : <Archive size={14} />}
+                                  </button>
+                                </>
+                              )}
                               {entry.isGroup && entry.customer && (
                                 <>
                                   <button onClick={(e) => { e.stopPropagation(); openEmailModal(entry); }} className="p-1.5 text-gray-900 font-bold hover:bg-emerald-400/20 rounded-md transition-colors" title="Enviar Recordatorio al Cliente">
@@ -984,6 +1050,127 @@ export default function CashflowPage() {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Recurring Payments Modal */}
+        {recurringModalOpen && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-center">
+            <div className="bg-white border border-gray-200 rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+              <div className="flex justify-between items-center p-6 border-b border-gray-200 bg-gray-50 shrink-0">
+                <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                  <Calendar className="text-indigo-600" />
+                  Configuración de Pagos Recurrentes
+                </h3>
+                <button onClick={() => setRecurringModalOpen(false)} className="text-gray-500 hover:text-gray-900 transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto p-6 bg-white">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-gray-200 text-sm text-gray-500 font-bold bg-gray-50">
+                      <th className="p-3">Código BC</th>
+                      <th className="p-3">Descripción</th>
+                      <th className="p-3 text-center">Configurado en App</th>
+                      <th className="p-3 text-center">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recurringPayments.length === 0 ? (
+                      <tr><td colSpan={4} className="p-4 text-center text-gray-500">No hay pagos recurrentes sincronizados de BC.</td></tr>
+                    ) : (
+                      recurringPayments.map(rec => (
+                        <tr key={rec.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                          <td className="p-3 font-mono text-sm text-gray-600">{rec.bcCode}</td>
+                          <td className="p-3 font-medium text-gray-900">{rec.description}</td>
+                          <td className="p-3 text-center">
+                            {rec.isActive ? (
+                              <div className="text-sm">
+                                <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-bold mr-2">ACTIVO</span>
+                                <div>Día {rec.dayOfMonth} | {getCurrencySymbol(rec.currencyCode || 'EUR')}{rec.amount}</div>
+                                <div className="text-xs text-gray-500">Desde: {rec.activeFromDate ? new Date(rec.activeFromDate).toLocaleDateString() : '-'}</div>
+                              </div>
+                            ) : (
+                              <span className="bg-gray-100 text-gray-500 px-2 py-0.5 rounded font-bold text-sm">NO AÑADIDO</span>
+                            )}
+                          </td>
+                          <td className="p-3 text-center">
+                            {rec.isActive ? (
+                              <button onClick={() => handleRemoveRecurring(rec)} className="px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 font-bold text-xs rounded transition-colors">
+                                Quitar del Cashflow
+                              </button>
+                            ) : (
+                              <button onClick={() => {
+                                setEditingRecurring(rec);
+                                setRecurringForm({ amount: '', dayOfMonth: '1', activeFromDate: new Date().toISOString().split('T')[0] });
+                              }} className="px-3 py-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 font-bold text-xs rounded transition-colors">
+                                Añadir al Cashflow
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Recurring Details Sub-Modal */}
+        {editingRecurring && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex justify-center items-center">
+            <div className="bg-white border border-gray-200 rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden transform transition-all">
+              <div className="flex justify-between items-center p-6 border-b border-gray-200 bg-gray-50">
+                <h3 className="text-xl font-bold text-gray-900">
+                  Configurar Pago
+                </h3>
+                <button onClick={() => setEditingRecurring(null)} className="text-gray-900 hover:text-gray-900 transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+              <form onSubmit={handleSaveRecurring} className="p-6 space-y-4">
+                <p className="text-sm text-gray-600 font-medium mb-4">{editingRecurring.description}</p>
+                <div>
+                  <label className="block text-sm font-bold text-gray-900 mb-1">Día del Mes (1-31)</label>
+                  <input 
+                    type="number" min="1" max="31" required
+                    value={recurringForm.dayOfMonth}
+                    onChange={e => setRecurringForm({...recurringForm, dayOfMonth: e.target.value})}
+                    className="w-full bg-white border border-gray-200 rounded-lg px-4 py-2.5 text-gray-900 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-900 mb-1">Importe (ej. -1000)</label>
+                  <input 
+                    type="number" step="0.01" required
+                    value={recurringForm.amount}
+                    onChange={e => setRecurringForm({...recurringForm, amount: e.target.value})}
+                    className="w-full bg-white border border-gray-200 rounded-lg px-4 py-2.5 text-gray-900 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-900 mb-1">A partir de (Fecha)</label>
+                  <input 
+                    type="date" required
+                    value={recurringForm.activeFromDate}
+                    onChange={e => setRecurringForm({...recurringForm, activeFromDate: e.target.value})}
+                    className="w-full bg-white border border-gray-200 rounded-lg px-4 py-2.5 text-gray-900 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+                <div className="pt-4 flex gap-3">
+                  <button type="button" onClick={() => setEditingRecurring(null)} className="flex-1 py-2 px-4 rounded-lg font-medium text-gray-800 bg-gray-50 border border-gray-200 hover:bg-gray-200">
+                    Cancelar
+                  </button>
+                  <button type="submit" className="flex-1 py-2 px-4 rounded-lg font-medium text-white bg-indigo-600 hover:bg-indigo-700 flex justify-center items-center gap-2">
+                    <Save size={16} /> Guardar
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}
